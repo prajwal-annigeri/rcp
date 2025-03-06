@@ -1,0 +1,65 @@
+syntax = "proto3";
+import "google/protobuf/wrappers.proto";
+package rcppb;
+
+option go_package = "/rcppb";
+
+message LogEntry {
+    string logType = 1;
+    string nodeId = 2;
+    string key = 3;
+    string value = 4;
+    int64 term = 5;
+}
+
+message AppendEntriesReq {
+    int64 term = 1;
+    string leaderId = 2;
+    int64 prevLogIndex = 3;
+    int64 prevLogTerm = 4;
+    repeated LogEntry entries = 5;
+    int64 leaderCommit = 6;
+}
+
+message AppendEntriesResponse {
+    int64 term = 1;
+    bool success = 2;
+}
+
+message RequestVoteReq {
+    int64 term = 1;
+    string candidateId = 2;
+    int64 lastLogIndex = 3;
+    int64 lastLogTerm = 4;
+}
+
+message RequestVoteResponse {
+    int64 term = 1;
+    bool voteGranted = 2;
+}
+
+message KV {
+    string key = 1;
+    string value = 2;
+}
+
+message GetValueReq {
+    string key = 1;
+}
+
+message GetValueResponse {
+    bool success = 1;
+    string value = 2;
+}
+
+message StoreKVResponse {
+    bool success = 1;
+}
+
+service RCP {
+    rpc AppendEntries(AppendEntriesReq) returns (AppendEntriesResponse) {}
+    rpc RequestVote (RequestVoteReq) returns (RequestVoteResponse) {}
+    rpc Store(KV) returns (StoreKVResponse) {}
+    rpc Get(GetValueReq) returns (GetValueResponse) {}
+    rpc SetStatus(google.protobuf.BoolValue) returns (google.protobuf.BoolValue) {}
+}
