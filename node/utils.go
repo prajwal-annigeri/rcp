@@ -1,6 +1,7 @@
 package node
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -9,7 +10,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
-
 
 func (node *Node) establishConns() error {
 	for id, port := range node.NodeMap {
@@ -49,4 +49,13 @@ func (node *Node) printState() {
 		return true
 	})
 	log.Println()
+}
+
+func (node *Node) forwardToLeader(key, value string) {
+
+	// Construct the HTTP request
+	leader, _ := node.votedFor.Load(node.currentTerm)
+	node.ClientMap[leader.(string)].Store(context.Background(), &rcppb.KV{Key: key, Value: value})
+
+	log.Printf("Forwarded req with key: %s, value: %s to leader: %s\n", key, value, leader.(string))
 }

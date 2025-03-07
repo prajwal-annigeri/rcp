@@ -32,10 +32,15 @@ func (node *Node) handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("Received data: Key=%s, Value=%s", key, value)
-	node.logBufferChan <- &rcppb.LogEntry{
-		LogType: "store",
-		Key:   key,
-		Value: value,
+
+	if !node.isLeader {
+		go node.forwardToLeader(key, value)
+	} else {
+		node.logBufferChan <- &rcppb.LogEntry{
+			LogType: "store",
+			Key:     key,
+			Value:   value,
+		}
 	}
 
 	respData := StoreResponse{
@@ -53,13 +58,13 @@ func (node *Node) getHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Printf("%v\n", err)
-		respData := GetKVResponse {
+		respData := GetKVResponse{
 			Value: "",
 		}
 		json.NewEncoder(w).Encode(respData)
 		return
 	}
-	respData := GetKVResponse {
+	respData := GetKVResponse{
 		Value: value,
 	}
 	json.NewEncoder(w).Encode(respData)
@@ -72,7 +77,6 @@ func (node *Node) killHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	json.NewEncoder(w).Encode(response)
 }
-
 
 func (node *Node) reviveHandler(w http.ResponseWriter, r *http.Request) {
 	node.Live = true

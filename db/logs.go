@@ -34,7 +34,7 @@ func (d *Database) GetLogAtIndex(index int64) (*rcppb.LogEntry, error) {
 		return &rcppb.LogEntry{}, fmt.Errorf("could not deserialize logbytes into logentry: %v", err)
 	}
 
-	log.Printf("Log at index %d: %v\n", index, &logEntry)
+	// log.Printf("Log at index %d: %v\n", index, &logEntry)
 
 	return &logEntry, nil
 }

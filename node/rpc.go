@@ -12,19 +12,18 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 	if len(appendEntryReq.Entries) > 0 {
 		log.Printf("Received AppendEntries from %s with %d entries. Term: %d\n", appendEntryReq.LeaderId, len(appendEntryReq.Entries), appendEntryReq.Term)
 	}
-	
+
 	if !node.Live {
 		return &rcppb.AppendEntriesResponse{
-			Term: node.currentTerm,
+			Term:    node.currentTerm,
 			Success: false,
 		}, errors.New("not alive")
 	}
 
-
 	if appendEntryReq.Term < node.currentTerm {
 		log.Printf("Denying append because my term %d is > %d\n", node.currentTerm, appendEntryReq.Term)
 		return &rcppb.AppendEntriesResponse{
-			Term: node.currentTerm,
+			Term:    node.currentTerm,
 			Success: false,
 		}, fmt.Errorf("%s denied append because its term is %d which is greater than %d", node.Id, node.currentTerm, appendEntryReq.Term)
 	}
@@ -43,7 +42,7 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 		if prevLogTerm != appendEntryReq.PrevLogTerm {
 			log.Printf("Denying append entry because prev log entryterm does not match, mine: %d, in req: %d", prevLogTerm, appendEntryReq.PrevLogTerm)
 			return &rcppb.AppendEntriesResponse{
-				Term: node.currentTerm,
+				Term:    node.currentTerm,
 				Success: false,
 			}, nil
 		}
@@ -54,7 +53,7 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 	err := node.insertLogs(appendEntryReq)
 	if err != nil {
 		return &rcppb.AppendEntriesResponse{
-			Term: node.currentTerm,
+			Term:    node.currentTerm,
 			Success: false,
 		}, err
 	}
@@ -64,7 +63,7 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 	}
 
 	return &rcppb.AppendEntriesResponse{
-		Term: node.currentTerm,
+		Term:    node.currentTerm,
 		Success: true,
 	}, nil
 }
@@ -87,13 +86,12 @@ func (node *Node) insertLogs(appendEntryReq *rcppb.AppendEntriesReq) error {
 	// }
 	return nil
 }
-		
 
 func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.RequestVoteReq) (*rcppb.RequestVoteResponse, error) {
 	if !node.Live {
 		log.Printf("I'm not alive")
 		return &rcppb.RequestVoteResponse{
-			Term: node.currentTerm,
+			Term:        node.currentTerm,
 			VoteGranted: false,
 		}, nil
 	}
@@ -101,7 +99,7 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 	if requestVoteReq.Term < node.currentTerm {
 		log.Printf("Denying vote to %s as my term is greater", requestVoteReq.CandidateId)
 		return &rcppb.RequestVoteResponse{
-			Term: node.currentTerm,
+			Term:        node.currentTerm,
 			VoteGranted: false,
 		}, nil
 	}
@@ -109,7 +107,7 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 	if requestVoteReq.LastLogTerm < node.lastTerm || (requestVoteReq.LastLogTerm == node.lastTerm && node.lastIndex > requestVoteReq.LastLogIndex) {
 		log.Printf("Denying vote to %s as I have a more complete log", requestVoteReq.CandidateId)
 		return &rcppb.RequestVoteResponse{
-			Term: node.currentTerm,
+			Term:        node.currentTerm,
 			VoteGranted: false,
 		}, nil
 	}
@@ -121,12 +119,25 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 		node.votedFor.Store(requestVoteReq.Term, requestVoteReq.CandidateId)
 		node.currentTerm = max(node.currentTerm, requestVoteReq.Term)
 		return &rcppb.RequestVoteResponse{
-			Term: node.currentTerm,
+			Term:        node.currentTerm,
 			VoteGranted: true,
 		}, nil
 	}
 	return &rcppb.RequestVoteResponse{
-		Term: node.currentTerm,
+		Term:        node.currentTerm,
 		VoteGranted: false,
 	}, fmt.Errorf("already voted for %s for term %d", votedFor.(string), requestVoteReq.Term)
+}
+
+func (node *Node) Store(ctx context.Context, KV *rcppb.KV) (*rcppb.StoreKVResponse, error) {
+	if node.isLeader {
+		node.logBufferChan <- &rcppb.LogEntry{
+			LogType: "store",
+			Key:     KV.Key,
+			Value:   KV.Value,
+		}
+	}
+	return &rcppb.StoreKVResponse{
+		Success: true,
+	}, nil
 }
