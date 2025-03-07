@@ -63,7 +63,7 @@ func (node *Node) sendHeartbeats() {
 			}
 
 			// Call AppendEntries on leader
-			node.AppendEntries(context.Background(), &rcppb.AppendEntriesReq{
+			resp, err := node.AppendEntries(context.Background(), &rcppb.AppendEntriesReq{
 				Term:         node.currentTerm,
 				LeaderId:     node.Id,
 				PrevLogIndex: node.lastIndex,
@@ -71,6 +71,12 @@ func (node *Node) sendHeartbeats() {
 				PrevLogTerm:  node.lastTerm,
 				Entries:      logsToSend,
 			})
+			selfSuccess := false
+			if err != nil {
+				log.Printf("append entry to self failed: %v", err)
+			} else if resp.Success {
+				selfSuccess = true
+			}
 
 			responseChan := make(chan *rcppb.AppendEntriesResponse)
 
@@ -80,6 +86,9 @@ func (node *Node) sendHeartbeats() {
 			}
 
 			successResponses, maxTerm := countSuccessfulAppendEntries(responseChan, 100*time.Millisecond)
+			if selfSuccess {
+				successResponses += 1
+			}
 			if successResponses >= node.K + 1 {
 				node.commitIndex = node.lastIndex
 			} else if maxTerm > node.currentTerm {
