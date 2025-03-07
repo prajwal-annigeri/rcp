@@ -21,7 +21,7 @@ var config ConfigFile
 type Node struct {
 	rcppb.UnimplementedRCPServer
 	currentTerm   int64
-	votedFor      string
+	votedFor      sync.Map
 	db            *db.Database
 	commitIndex   int64
 	execIndex     int64
@@ -96,7 +96,6 @@ func NewNode(nodeId string) (*Node, error) {
 		HttpPort:      httpPort,
 		currentTerm:   0,
 		K:             config.K,
-		votedFor:      "",
 		db:            db,
 		DBCloseFunc:   dbCloseFunc,
 		lastApplied:   -1,
@@ -151,7 +150,7 @@ func (node *Node) Start() {
 func (node *Node) requestVotes() {
 	log.Printf("Requesting votes\n")
 	node.currentTerm += 1
-	node.votedFor = node.Id
+	node.votedFor.Store(node.currentTerm, node.Id)
 	node.isCandidate = true
 	term := node.currentTerm
 	votesChan := make(chan *rcppb.RequestVoteResponse, len(node.ClientMap))

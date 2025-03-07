@@ -3,7 +3,6 @@ package node
 import (
 	"context"
 	"log"
-	// "math/rand"
 	"rcp/rcppb"
 	"strconv"
 	"time"
@@ -12,13 +11,12 @@ import (
 var printTimer bool
 
 func randomElectionTimeout(nodeNum int) time.Duration {
-	x := time.Duration(250 + nodeNum * 300) * time.Millisecond
+	x := time.Duration(700+nodeNum*250) * time.Millisecond
 	// x := time.Duration(250 + rand.Intn(2500)) * time.Millisecond
 	if !printTimer {
 		log.Println(x)
 		printTimer = true
 	}
-	// log.Println(x)
 	return x
 }
 
@@ -28,32 +26,31 @@ func (node *Node) resetElectionTimer() {
 		log.Printf("Error setting timer: %v\n", err)
 		return
 	}
-	
+
 	node.electionTimer.Reset(randomElectionTimeout(nodeNum))
 }
 
-
 func (node *Node) monitorElectionTimer() {
 	for {
-        <-node.electionTimer.C
+		<-node.electionTimer.C
 		if node.Live && !node.isLeader {
 			log.Printf("Election timer ran out\n")
 			go node.requestVotes()
 		}
 		node.resetElectionTimer()
 		// node.electionTimer.Reset(node.randomElectionTimeout())
-    }
+	}
 }
 
 func (node *Node) sendHeartbeats() {
-	
+
 	for {
 		if node.Live && node.isLeader {
 			doneReading := false
 			var logsToSend []*rcppb.LogEntry
 			for {
 				select {
-				case c := <- node.logBufferChan:
+				case c := <-node.logBufferChan:
 					log.Printf("Read log from channel: %v\n", c)
 					c.Term = node.currentTerm
 					logsToSend = append(logsToSend, c)
@@ -67,18 +64,13 @@ func (node *Node) sendHeartbeats() {
 
 			// Call AppendEntries on leader
 			node.AppendEntries(context.Background(), &rcppb.AppendEntriesReq{
-				Term: node.currentTerm,
-				LeaderId: node.Id,
+				Term:         node.currentTerm,
+				LeaderId:     node.Id,
 				PrevLogIndex: node.lastIndex,
 				LeaderCommit: node.commitIndex,
-				PrevLogTerm: node.lastTerm,
-				Entries: logsToSend,
+				PrevLogTerm:  node.lastTerm,
+				Entries:      logsToSend,
 			})
-
-			// Construct AppendEntries Request
-			// appendEntriesReq := node.constructAppendEntriesRequest(node.currentTerm, logsToSend)
-
-			
 
 			responseChan := make(chan *rcppb.AppendEntriesResponse)
 
@@ -87,39 +79,47 @@ func (node *Node) sendHeartbeats() {
 				go node.sendHeartbeatTo(client, nodeId, responseChan)
 			}
 
-			successResponses, maxTerm := countSuccessfulAppendEntries(responseChan, 100 * time.Millisecond)
-			if maxTerm > node.currentTerm {
+			successResponses, maxTerm := countSuccessfulAppendEntries(responseChan, 100*time.Millisecond)
+			if successResponses >= node.K + 1 {
+				node.commitIndex = node.lastIndex
+			} else if maxTerm > node.currentTerm {
 				node.currentTerm = maxTerm
 				node.isLeader = false
-			} else if successResponses >= node.K + 1 {
-				node.commitIndex = node.lastIndex //  + int64(len(appendEntriesReq.Entries))
-			}
+			} 
 
-		} else{
-			time.Sleep(HeartbeatInterval)
 		}
-		
+		time.Sleep(100 * time.Millisecond)
+
 	}
 }
 
 func (node *Node) constructAppendEntriesRequest(term int64, nodeId string) (*rcppb.AppendEntriesReq, error) {
 	nextIndex, _ := node.nextIndex.Load(nodeId)
 	entries, err := node.db.GetLogsFromIndex(nextIndex.(int64))
+	prevLogTerm := int64(-1)
+	if nextIndex.(int64) - 1 >= 0 {
+		prevLogEntry, err := node.db.GetLogAtIndex(nextIndex.(int64) - 1)
+		if err != nil {
+			log.Printf("error fetching prevLogEntry: %v", err)
+			return nil, err
+		}
+		prevLogTerm = prevLogEntry.Term
+	}
 	if err != nil {
 		return nil, err
 	}
 	nextLogIndex, _ := node.nextIndex.Load(nodeId)
 	return &rcppb.AppendEntriesReq{
-		Term: term,
-		LeaderId: node.Id,
+		Term:         term,
+		LeaderId:     node.Id,
 		PrevLogIndex: int64(nextLogIndex.(int64) - 1),
 		LeaderCommit: node.commitIndex,
-		PrevLogTerm: node.lastTerm,
-		Entries: entries,
+		PrevLogTerm:  prevLogTerm,
+		Entries:      entries,
 	}, nil
 }
 
-func (node *Node) sendHeartbeatTo(client rcppb.RCPClient, nodeId string, responsesChan chan<- *rcppb.AppendEntriesResponse ) {
+func (node *Node) sendHeartbeatTo(client rcppb.RCPClient, nodeId string, responsesChan chan<- *rcppb.AppendEntriesResponse) {
 	// log.Printf("Sending heartbeat to %s\n", nodeId)
 	req, err := node.constructAppendEntriesRequest(node.currentTerm, nodeId)
 	if err != nil {
@@ -138,11 +138,14 @@ func (node *Node) sendHeartbeatTo(client rcppb.RCPClient, nodeId string, respons
 
 	if resp.Success {
 		currNextIndex, _ := node.nextIndex.Load(nodeId)
-		node.nextIndex.Store(nodeId, currNextIndex.(int64) + int64(len(req.Entries)))
+		node.nextIndex.Store(nodeId, currNextIndex.(int64)+int64(len(req.Entries)))
 		if len(req.Entries) > 0 {
 			responsesChan <- resp
 		}
 		// log.Printf("Successful append entries to %s\n", nodeId)
+	} else {
+		currNextIndex, _ := node.nextIndex.Load(nodeId)
+		node.nextIndex.Store(nodeId, currNextIndex.(int64) - 1)
 	}
 }
 
