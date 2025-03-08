@@ -2,10 +2,11 @@ package node
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"rcp/rcppb"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.AppendEntriesReq) (*rcppb.AppendEntriesResponse, error) {
@@ -17,7 +18,7 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 		return &rcppb.AppendEntriesResponse{
 			Term:    node.currentTerm,
 			Success: false,
-		}, errors.New("not alive")
+		}, status.Error(codes.Unavailable, "not alive")
 	}
 
 	if appendEntryReq.Term < node.currentTerm {
@@ -25,7 +26,7 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 		return &rcppb.AppendEntriesResponse{
 			Term:    node.currentTerm,
 			Success: false,
-		}, fmt.Errorf("%s denied append because its term is %d which is greater than %d", node.Id, node.currentTerm, appendEntryReq.Term)
+		}, status.Error(codes.Aborted, fmt.Sprintf("%s denied append because its term is %d which is greater than %d", node.Id, node.currentTerm, appendEntryReq.Term))
 	}
 
 	if node.currentTerm < appendEntryReq.Term {
@@ -55,7 +56,7 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 		return &rcppb.AppendEntriesResponse{
 			Term:    node.currentTerm,
 			Success: false,
-		}, err
+		}, status.Error(codes.Internal, err.Error())
 	}
 
 	if appendEntryReq.LeaderCommit > node.commitIndex {
@@ -72,20 +73,49 @@ func (node *Node) insertLogs(appendEntryReq *rcppb.AppendEntriesReq) error {
 	if len(appendEntryReq.Entries) > 0 {
 		log.Printf("Inserting logs: %v\n", appendEntryReq.Entries)
 	}
-	// err := node.db.DeleteLogsStartingFromIndex(appendEntryReq.PrevLogIndex + 1)
+	currIndex := appendEntryReq.PrevLogIndex + 1
+	// var err error
+	for _, entry := range appendEntryReq.Entries {
+		log.Printf("Putting entry: %v\n", entry)
+		failedNode, recoveredNode, err := node.db.PutLogAtIndex(currIndex, entry)
+		
+		if err != nil {
+			return err
+		}
+		if failedNode != "" {
+			node.removeFromFailureSet(failedNode)
+		} else if recoveredNode != "" {
+			node.removeFromRecoverySet(recoveredNode)
+		}
+		node.lastIndex = currIndex
+		node.lastTerm = appendEntryReq.Term
+		currIndex += 1
+	}
+	// return nil
+	// err := node.db.InsertLogs(appendEntryReq)
 	// if err != nil {
 	// 	return err
 	// }
-	err := node.db.InsertLogs(appendEntryReq)
-	if err != nil {
-		return err
-	}
-	// if len(appendEntryReq.Entries) > 0 {
-	node.lastIndex = appendEntryReq.PrevLogIndex + int64(len(appendEntryReq.Entries))
-	node.lastTerm = appendEntryReq.Term
-	// }
+	// node.lastIndex = appendEntryReq.PrevLogIndex + int64(len(appendEntryReq.Entries))
+	// node.lastTerm = appendEntryReq.Term
 	return nil
 }
+
+// func (node *Node) insertLogAtIndex(index int64, entry *rcppb.LogEntry) error {
+// 	existingLog, err := node.db.GetLogAtIndex(index)
+// 	if err == nil {
+// 		if existingLog.LogType == "failure" {
+// 			node.removeFromFailureSet()
+// 		} else if existingLog.LogType == "recovery" {
+// 			node.removeFromRecoveryWaitSet()
+// 		}
+// 	}
+// 	err = node.db.PutLogAtIndex(index, entry)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	return nil
+// }
 
 func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.RequestVoteReq) (*rcppb.RequestVoteResponse, error) {
 	if !node.Live {
@@ -93,7 +123,7 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 		return &rcppb.RequestVoteResponse{
 			Term:        node.currentTerm,
 			VoteGranted: false,
-		}, nil
+		}, status.Error(codes.Unavailable, "not alive")
 	}
 	log.Printf("Received RequestVote from %s: Term %d", requestVoteReq.CandidateId, requestVoteReq.Term)
 	if requestVoteReq.Term < node.currentTerm {
@@ -126,7 +156,7 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 	return &rcppb.RequestVoteResponse{
 		Term:        node.currentTerm,
 		VoteGranted: false,
-	}, fmt.Errorf("already voted for %s for term %d", votedFor.(string), requestVoteReq.Term)
+	}, status.Error(codes.PermissionDenied, fmt.Sprintf("already voted for %s for term %d", votedFor.(string), requestVoteReq.Term))
 }
 
 func (node *Node) Store(ctx context.Context, KV *rcppb.KV) (*rcppb.StoreKVResponse, error) {

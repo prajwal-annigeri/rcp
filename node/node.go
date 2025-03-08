@@ -20,31 +20,46 @@ var config ConfigFile
 
 type Node struct {
 	rcppb.UnimplementedRCPServer
-	currentTerm   int64
-	votedFor      sync.Map
-	db            *db.Database
-	commitIndex   int64
-	execIndex     int64
-	lastApplied   int64
-	nextIndex     sync.Map
-	matchIndex    map[string]int
-	lastIndex     int64
-	lastTerm      int64
-	Id            string            `json:"id"`
-	Port          string            `json:"port"`
-	HttpPort      string            `json:"http_port"`
-	NodeMap       map[string]string `json:"nodeMap"`
-	ConnMap       map[string]*grpc.ClientConn
-	ClientMap     map[string]rcppb.RCPClient
-	Live          bool
-	DBCloseFunc   func() error
-	K             int
-	isLeader      bool
-	isCandidate   bool
-	electionTimer *time.Timer
-	currAlive     int64
-	// Read from HTTP request into this buffer
-	logBufferChan chan *rcppb.LogEntry
+	currentTerm     int64
+	votedFor        sync.Map
+	db              *db.Database
+	commitIndex     int64
+	execIndex       int64
+	lastApplied     int64
+	nextIndex       sync.Map
+	matchIndex      map[string]int
+	lastIndex       int64
+	lastTerm        int64
+	Id              string            `json:"id"`
+	Port            string            `json:"port"`
+	HttpPort        string            `json:"http_port"`
+	NodeMap         map[string]string `json:"nodeMap"`
+	ConnMap         map[string]*grpc.ClientConn
+	ClientMap       map[string]rcppb.RCPClient
+	Live            bool
+	DBCloseFunc     func() error
+	K               int
+	isLeader        bool
+	isCandidate     bool
+	electionTimer   *time.Timer
+	currAlive       int64
+	serverStatusMap sync.Map
+	logBufferChan   chan *rcppb.LogEntry // Read from HTTP request into this buffer
+
+	/// The below hash sets are used to prevent duplicate failure/recovery logs from being inserted.
+	//
+	// Example:
+	// - When a leader detects that S2 has failed, it inserts `failed(S2)` into the log.
+	// - However, this log entry is not executed (i.e., it does not decrease the count of alive nodes)
+	//   until it has been replicated across the quorum.
+	// - On the next heartbeat, the leader still sees S2 as down. Since the previous log entry hasn't been executed yet,
+	//   S2 is still marked as alive in the system state.
+	// - As a result, the leader might attempt to insert another `failed(S2)` log entry, leading to duplicates.
+	//
+	failureLogWaitingSet  map[string]struct{}
+	recoveryLogWaitingSet map[string]struct{}
+	failureSetLock        sync.Mutex
+	recoverySetLock       sync.Mutex
 }
 
 type ConfigFile struct {
@@ -53,7 +68,7 @@ type ConfigFile struct {
 }
 
 func NewNode(nodeId string) (*Node, error) {
-	
+
 	mapJson, err := os.Open("nodes.json")
 	if err != nil {
 		log.Fatalf("Error with reading config JSON: %s\n", err)
@@ -77,40 +92,40 @@ func NewNode(nodeId string) (*Node, error) {
 
 	matchIndexMap := make(map[string]int)
 	nodes = config.Nodes
-	nodeMap := make(map[string]string)
-	httpPort := ""
-	for _, node := range nodes {
-		if node.Id == nodeId {
-			httpPort = node.HttpPort
-		}
-		nodeMap[node.Id] = node.Port
-	}
-
-	if nodeMap[nodeId] == "" {
-		log.Fatalf("No port specified for ID: %s in config JSON", nodeId)
-	}
 
 	newNode := &Node{
-		Id:            nodeId,
-		Port:          nodeMap[nodeId],
-		HttpPort:      httpPort,
-		currentTerm:   0,
-		K:             config.K,
-		db:            db,
-		DBCloseFunc:   dbCloseFunc,
-		lastApplied:   -1,
-		commitIndex:   -1,
-		execIndex:     -1,
-		lastIndex:     -1,
-		lastTerm:      -1,
-		matchIndex:    matchIndexMap,
-		NodeMap:       nodeMap,
-		ConnMap:       make(map[string]*grpc.ClientConn),
-		Live:          true,
-		ClientMap:     make(map[string]rcppb.RCPClient),
-		electionTimer: time.NewTimer(2 * time.Second),
-		currAlive:     int64(len(nodeMap)),
-		logBufferChan: make(chan *rcppb.LogEntry),
+		Id:                    nodeId,
+		currentTerm:           0,
+		K:                     config.K,
+		db:                    db,
+		DBCloseFunc:           dbCloseFunc,
+		lastApplied:           -1,
+		commitIndex:           -1,
+		execIndex:             -1,
+		lastIndex:             -1,
+		lastTerm:              -1,
+		matchIndex:            matchIndexMap,
+		NodeMap:               make(map[string]string),
+		ConnMap:               make(map[string]*grpc.ClientConn),
+		Live:                  true,
+		ClientMap:             make(map[string]rcppb.RCPClient),
+		electionTimer:         time.NewTimer(2 * time.Second),
+		logBufferChan:         make(chan *rcppb.LogEntry),
+		failureLogWaitingSet:  make(map[string]struct{}),
+		recoveryLogWaitingSet: make(map[string]struct{}),
+	}
+
+	for _, node := range nodes {
+		if node.Id == nodeId {
+			newNode.HttpPort = node.HttpPort
+			newNode.Port = node.Port
+		}
+		newNode.NodeMap[node.Id] = node.Port
+		newNode.serverStatusMap.Store(node.Id, true)
+	}
+	newNode.currAlive = int64(len(newNode.NodeMap))
+	if newNode.NodeMap[nodeId] == "" {
+		log.Fatalf("No port specified for ID: %s in config JSON", nodeId)
 	}
 
 	newNode.resetElectionTimer()
@@ -189,7 +204,7 @@ func (node *Node) requestVotes() {
 
 func (node *Node) initNextIndex() {
 	for _, otherNode := range nodes {
-		node.nextIndex.Store(otherNode.Id, node.lastIndex + 1)
+		node.nextIndex.Store(otherNode.Id, node.lastIndex+1)
 	}
 }
 
