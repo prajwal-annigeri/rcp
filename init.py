@@ -23,5 +23,6 @@ def run_server(server):
 
 # Start each server in a new macOS terminal window
 for server in servers:
+    os.makedirs("./dbs", exist_ok=True)
     run_server(server)
     # time.sleep(1)  # Small delay to prevent overwhelming the system
