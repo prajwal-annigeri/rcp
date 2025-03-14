@@ -45,14 +45,17 @@ func (node *Node) monitorElectionTimer() {
 	}
 }
 
+// function to send heartbeats. Will be running as a goroutine in the background.
 func (node *Node) sendHeartbeats() {
 
 	for {
+		// Send AppendEntry only if live and is leader
 		if node.Live && node.isLeader {
 			doneReading := false
 			var logsToSend []*rcppb.LogEntry
 			for {
 				select {
+				// read from the channel which has requests received from the client
 				case c := <-node.logBufferChan:
 					log.Printf("Read log from channel: %v\n", c)
 					c.Term = node.currentTerm
@@ -81,6 +84,7 @@ func (node *Node) sendHeartbeats() {
 				selfSuccess = true
 			}
 
+			// channel to collect all responses to AppendEntries
 			responseChan := make(chan *rcppb.AppendEntriesResponse)
 
 			// Send AppendEntries to all other nodes

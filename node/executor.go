@@ -2,6 +2,8 @@ package node
 
 import "time"
 
+
+// The executor function, runs as a goroutine
 func (node *Node) executor() {
 	for {
 		if node.commitIndex > node.execIndex {

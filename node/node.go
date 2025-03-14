@@ -21,6 +21,8 @@ var config ConfigFile
 type Node struct {
 	rcppb.UnimplementedRCPServer
 	currentTerm     int64
+
+	// TODO: persist votedFor on disk
 	votedFor        sync.Map
 	db              *db.Database
 	commitIndex     int64
@@ -62,13 +64,17 @@ type Node struct {
 	recoverySetLock       sync.Mutex
 }
 
+
+// struct to read in the config file
 type ConfigFile struct {
 	K     int     `json:"K"`
 	Nodes []*Node `json:"nodes"`
 }
 
-func NewNode(nodeId string) (*Node, error) {
 
+// constructor
+func NewNode(nodeId string) (*Node, error) {
+	// reads config file
 	mapJson, err := os.Open("nodes.json")
 	if err != nil {
 		log.Fatalf("Error with reading config JSON: %s\n", err)
@@ -84,6 +90,7 @@ func NewNode(nodeId string) (*Node, error) {
 		log.Fatalf("Failed to unmarshal JSON: %s", err)
 	}
 
+	// Initialize data store
 	dbPath := "./dbs/" + nodeId + ".db"
 	db, dbCloseFunc, err := db.InitDatabase(dbPath)
 	if err != nil {
@@ -115,7 +122,9 @@ func NewNode(nodeId string) (*Node, error) {
 		recoveryLogWaitingSet: make(map[string]struct{}),
 	}
 
+	// go through all the nodes defined in config file and map them to their gRPC ports
 	for _, node := range nodes {
+		// if current node, then assign ports to node object
 		if node.Id == nodeId {
 			newNode.HttpPort = node.HttpPort
 			newNode.Port = node.Port
@@ -123,6 +132,8 @@ func NewNode(nodeId string) (*Node, error) {
 		newNode.NodeMap[node.Id] = node.Port
 		newNode.serverStatusMap.Store(node.Id, true)
 	}
+
+	// initialize current alive to number of nodes in the config file
 	newNode.currAlive = int64(len(newNode.NodeMap))
 	if newNode.NodeMap[nodeId] == "" {
 		log.Fatalf("No port specified for ID: %s in config JSON", nodeId)
@@ -134,13 +145,26 @@ func NewNode(nodeId string) (*Node, error) {
 }
 
 func (node *Node) Start() {
+
+	// starts HTTP server used by clients to interact with server
 	go node.startHttpServer()
 	time.Sleep(5 * time.Second)
+
+	// establish gRPC connections with ohter nodes
 	node.establishConns()
+
+	// initialize next index (log of index to send to a node) for every node to 0
 	node.initNextIndex()
+
+	// start goroutine that monitors the election timer
 	go node.monitorElectionTimer()
+
+	// start goroutine that sends heartbeats/AppendEntries
 	go node.sendHeartbeats()
+
+	//start executor goroutine which applies logs to state machine
 	go node.executor()
+
 	for {
 		printMenu()
 		var input string
@@ -162,22 +186,38 @@ func (node *Node) Start() {
 	}
 }
 
+
+// request votes from other nodes on election timer expiry
 func (node *Node) requestVotes() {
 	log.Printf("Requesting votes\n")
 	node.currentTerm += 1
+
+	// vote for self
+	// TODO: call RequestVote on self rather than doing this?
 	node.votedFor.Store(node.currentTerm, node.Id)
 	node.isCandidate = true
 	term := node.currentTerm
+
+	// create channel to collect votes
 	votesChan := make(chan *rcppb.RequestVoteResponse, len(node.ClientMap))
+
+	// send RequestVote to every other node
 	for nodeId, client := range node.ClientMap {
 		go node.sendRequestVote(client, term, votesChan, nodeId)
 	}
-	voteCount := int64(1)
+
+
+	voteCount := int64(1) // initialized to 1 because already voted for self
+
+	// initialize timer to wait for votes
+	// TODO: refine timer duration
 	voteWaitTimer := time.After(500 * time.Millisecond)
 	for {
 		select {
+		// read in vote from channel
 		case voteResp := <-votesChan:
 			log.Printf("Received vote %t\n", voteResp.VoteGranted)
+			// validate vote
 			if voteResp.Term > term {
 				node.currentTerm = voteResp.Term
 				node.isCandidate = false

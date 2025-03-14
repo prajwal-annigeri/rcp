@@ -13,6 +13,7 @@ import (
 )
 
 func (node *Node) establishConns() error {
+	// Iterate through every node in nodeMap and create gRPC clients for every other node
 	for id, port := range node.NodeMap {
 		if node.Id != id && node.ConnMap[id] == nil {
 			if node.NodeMap[id] == "" {
@@ -41,6 +42,7 @@ func printMenu() {
 	fmt.Print("Choose an option: ")
 }
 
+// utility function to print state of node
 func (node *Node) printState() {
 	log.Printf("Term: %d\nPrev Term: %d, Prev Log Index: %d isLeader: %t\n", node.currentTerm, node.lastTerm, node.lastIndex, node.isLeader)
 	log.Printf("Current alive: %d", node.currAlive)
