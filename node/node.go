@@ -216,14 +216,14 @@ func (node *Node) requestVotes() {
 		select {
 		// read in vote from channel
 		case voteResp := <-votesChan:
-			log.Printf("Received vote %t\n", voteResp.VoteGranted)
+			log.Printf("Received vote %v\n", voteResp)
 			// validate vote
-			if voteResp.Term > term {
+			if voteResp != nil && voteResp.Term > term {
 				node.currentTerm = voteResp.Term
 				node.isCandidate = false
 				return
 			}
-			if voteResp.VoteGranted {
+			if voteResp != nil && voteResp.VoteGranted {
 				voteCount += 1
 				if voteCount >= node.currAlive-int64(node.K) {
 					node.isLeader = true
@@ -256,6 +256,6 @@ func (node *Node) sendRequestVote(client rcppb.RCPClient, term int64, votesChan 
 		LastLogIndex: node.lastIndex,
 		LastLogTerm:  node.lastTerm,
 	})
-
+	log.Printf("Resp from %s: %v", nodeId, resp)
 	votesChan <- resp
 }

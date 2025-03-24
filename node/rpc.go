@@ -119,7 +119,7 @@ func (node *Node) insertLogs(appendEntryReq *rcppb.AppendEntriesReq) error {
 
 func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.RequestVoteReq) (*rcppb.RequestVoteResponse, error) {
 	if !node.Live {
-		log.Printf("I'm not alive")
+		log.Printf("Received RequestVote: %s Term: %d I'm not alive", requestVoteReq.CandidateId, requestVoteReq.Term)
 		return &rcppb.RequestVoteResponse{
 			Term:        node.currentTerm,
 			VoteGranted: false,
