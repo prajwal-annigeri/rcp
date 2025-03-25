@@ -20,7 +20,7 @@ var config ConfigFile
 
 type Node struct {
 	rcppb.UnimplementedRCPServer
-	currentTerm     int64
+	currentTerm int64
 
 	// TODO: persist votedFor on disk
 	votedFor        sync.Map
@@ -62,15 +62,17 @@ type Node struct {
 	recoveryLogWaitingSet map[string]struct{}
 	failureSetLock        sync.Mutex
 	recoverySetLock       sync.Mutex
-}
 
+	// reachable nodes set to simulate partitions
+	reachableNodes   map[string]struct{}
+	reachableSetLock sync.RWMutex
+}
 
 // struct to read in the config file
 type ConfigFile struct {
 	K     int     `json:"K"`
 	Nodes []*Node `json:"nodes"`
 }
-
 
 // constructor
 func NewNode(nodeId string) (*Node, error) {
@@ -120,6 +122,7 @@ func NewNode(nodeId string) (*Node, error) {
 		logBufferChan:         make(chan *rcppb.LogEntry),
 		failureLogWaitingSet:  make(map[string]struct{}),
 		recoveryLogWaitingSet: make(map[string]struct{}),
+		reachableNodes:        make(map[string]struct{}),
 	}
 
 	// go through all the nodes defined in config file and map them to their gRPC ports
@@ -131,6 +134,7 @@ func NewNode(nodeId string) (*Node, error) {
 		}
 		newNode.NodeMap[node.Id] = node.Port
 		newNode.serverStatusMap.Store(node.Id, true)
+		newNode.reachableNodes[node.Id] = struct{}{}
 	}
 
 	// initialize current alive to number of nodes in the config file
@@ -186,7 +190,6 @@ func (node *Node) Start() {
 	}
 }
 
-
 // request votes from other nodes on election timer expiry
 func (node *Node) requestVotes() {
 	log.Printf("Requesting votes\n")
@@ -205,7 +208,6 @@ func (node *Node) requestVotes() {
 	for nodeId, client := range node.ClientMap {
 		go node.sendRequestVote(client, term, votesChan, nodeId)
 	}
-
 
 	voteCount := int64(1) // initialized to 1 because already voted for self
 

@@ -21,6 +21,17 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 		}, status.Error(codes.Unavailable, "not alive")
 	}
 
+	node.reachableSetLock.RLock()
+	defer node.reachableSetLock.RUnlock()
+	_, reachable := node.reachableNodes[appendEntryReq.LeaderId]
+	if !reachable {
+		log.Printf("Received AppendEntries: %s Term: %d I'm not reachable", appendEntryReq.LeaderId, appendEntryReq.Term)
+		return &rcppb.AppendEntriesResponse{
+			Term:        node.currentTerm,
+			Success: false,
+		}, status.Error(codes.Unavailable, "not reachable")
+	}
+
 	if appendEntryReq.Term < node.currentTerm {
 		log.Printf("Denying append because my term %d is > %d\n", node.currentTerm, appendEntryReq.Term)
 		return &rcppb.AppendEntriesResponse{
@@ -124,6 +135,16 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 			Term:        node.currentTerm,
 			VoteGranted: false,
 		}, status.Error(codes.Unavailable, "not alive")
+	}
+	node.reachableSetLock.RLock()
+	defer node.reachableSetLock.RUnlock()
+	_, reachable := node.reachableNodes[requestVoteReq.CandidateId]
+	if !reachable {
+		log.Printf("Received RequestVote: %s Term: %d I'm not reachable", requestVoteReq.CandidateId, requestVoteReq.Term)
+		return &rcppb.RequestVoteResponse{
+			Term:        node.currentTerm,
+			VoteGranted: false,
+		}, status.Error(codes.Unavailable, "not reachable")
 	}
 	log.Printf("Received RequestVote from %s: Term %d", requestVoteReq.CandidateId, requestVoteReq.Term)
 	if requestVoteReq.Term < node.currentTerm {

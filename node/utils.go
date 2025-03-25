@@ -46,6 +46,7 @@ func printMenu() {
 func (node *Node) printState() {
 	log.Printf("Term: %d\nPrev Term: %d, Prev Log Index: %d isLeader: %t\n", node.currentTerm, node.lastTerm, node.lastIndex, node.isLeader)
 	log.Printf("Current alive: %d", node.currAlive)
+	log.Printf("Reachable nodes: %v", node.reachableNodes)
 	log.Println("Next Index: ")
 	var nextIndexString strings.Builder
 	node.nextIndex.Range(func(key, value any) bool {
@@ -65,10 +66,16 @@ func (node *Node) printState() {
 func (node *Node) forwardToLeader(key, value string) {
 
 	// Construct the HTTP request
-	leader, _ := node.votedFor.Load(node.currentTerm)
-	node.ClientMap[leader.(string)].Store(context.Background(), &rcppb.KV{Key: key, Value: value})
-
-	log.Printf("Forwarded req with key: %s, value: %s to leader: %s\n", key, value, leader.(string))
+	leader, ok := node.votedFor.Load(node.currentTerm)
+	if !ok {
+		log.Println("BUG")
+		return
+	}
+	client, ok := node.ClientMap[leader.(string)]
+	if ok {
+		client.Store(context.Background(), &rcppb.KV{Key: key, Value: value})
+		log.Printf("Forwarded req with key: %s, value: %s to leader: %s\n", key, value, leader.(string))
+	}
 }
 
 func (node *Node) checkInsertRecoveryLog(nodeId string) {

@@ -48,7 +48,8 @@ func displayMenu() {
 	fmt.Println("2. Get Value")
 	fmt.Println("3. Kill server")
 	fmt.Println("4. Revive server")
-	fmt.Println("5. Exit")
+	fmt.Println("5. Partition")
+	fmt.Println("6. Exit")
 }
 
 // MapServerIDToHTTPPort creates a mapping of server IDs to HTTP ports
@@ -95,6 +96,40 @@ func sendStoreRequest(serverMap map[string]string) {
 	defer resp.Body.Close()
 
 	fmt.Println("Store request sent! Response:", resp.Status)
+}
+
+func doPartition(serverMap map[string]string) {
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Println("Enter partitions. Example: [[\"S1\", \"S2\"], [\"S3\", \"S4\"]]")
+	
+	input, err := reader.ReadString('\n')
+    if err != nil {
+        log.Printf("Error reading input: %v", err)
+        return
+    }
+	input = strings.TrimSpace(input)
+    input = strings.ReplaceAll(input, ", ", ",")
+	var partitions [][]string
+	err = json.Unmarshal([]byte(input), &partitions)
+	if err != nil {
+		log.Printf("Error parsing partitions: %v", err)
+		return
+	}
+
+	log.Printf("%v", partitions)
+	// Construct the HTTP request
+	for _, partitionList := range partitions {
+		for _, nodeId := range partitionList {
+			url := fmt.Sprintf("http://localhost%s/partition?nodes=%s", serverMap[nodeId], strings.Join(partitionList, ","))
+			resp, err := http.Post(url, "application/json", nil)
+			if err != nil {
+				fmt.Println("Error sending request:", err)
+				return
+			}
+			resp.Body.Close()
+		}
+		
+	}
 }
 
 type GetValueResponse struct {
@@ -243,6 +278,8 @@ func main() {
 		case 4:
 			reviveServer(serverMap)
 		case 5:
+			doPartition(serverMap)
+		case 6:
 			fmt.Println("Exiting...")
 			return
 

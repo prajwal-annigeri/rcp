@@ -5,9 +5,10 @@ import (
 	"log"
 	"net/http"
 	"rcp/rcppb"
+	"strings"
 )
 
-type StoreResponse struct {
+type SuccessResponse struct {
 	Success bool `json:"success"`
 }
 
@@ -43,7 +44,7 @@ func (node *Node) handler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	respData := StoreResponse{
+	respData := SuccessResponse{
 		Success: true,
 	}
 
@@ -72,7 +73,7 @@ func (node *Node) getHandler(w http.ResponseWriter, r *http.Request) {
 
 func (node *Node) killHandler(w http.ResponseWriter, r *http.Request) {
 	node.Live = false
-	response := StoreResponse{
+	response := SuccessResponse{
 		Success: true,
 	}
 	json.NewEncoder(w).Encode(response)
@@ -80,10 +81,60 @@ func (node *Node) killHandler(w http.ResponseWriter, r *http.Request) {
 
 func (node *Node) reviveHandler(w http.ResponseWriter, r *http.Request) {
 	node.Live = true
-	response := StoreResponse{
+	response := SuccessResponse{
 		Success: true,
 	}
 	json.NewEncoder(w).Encode(response)
+}
+
+
+func (node *Node) partitionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST method allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	nodesList := r.URL.Query().Get("nodes")
+	if nodesList == "" {
+		http.Error(w, "Missing required 'nodes' query parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Split and clean the nodes list
+	nodes := strings.Split(nodesList, ",")
+	if len(nodes) == 0 {
+		http.Error(w, "Empty nodes list not allowed", http.StatusBadRequest)
+		return
+	}
+
+	// Clean up whitespace and validate individual nodes
+	cleanedNodes := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		trimmed := strings.TrimSpace(n)
+		if trimmed == "" {
+			http.Error(w, "Empty node names not allowed", http.StatusBadRequest)
+			return
+		}
+		cleanedNodes = append(cleanedNodes, trimmed)
+	}
+
+	node.reachableSetLock.Lock()
+	node.reachableNodes = make(map[string]struct{})
+	for _, nodeId := range cleanedNodes {
+		node.reachableNodes[nodeId] = struct{}{}
+	}
+	node.reachableSetLock.Unlock()
+	
+	respData := SuccessResponse{
+		Success: true,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(respData); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
 
 func (node *Node) startHttpServer() {
@@ -92,6 +143,7 @@ func (node *Node) startHttpServer() {
 	http.HandleFunc("/get", node.getHandler)
 	http.HandleFunc("/kill", node.killHandler)
 	http.HandleFunc("/revive", node.reviveHandler)
+	http.HandleFunc("/partition", node.partitionHandler)
 	err := http.ListenAndServe(node.HttpPort, nil)
 	if err != nil {
 		log.Printf("Failed to start HTTP server: %v", err)
