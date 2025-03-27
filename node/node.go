@@ -66,6 +66,9 @@ type Node struct {
 	// reachable nodes set to simulate partitions
 	reachableNodes   map[string]struct{}
 	reachableSetLock sync.RWMutex
+
+	failedAppendEntries sync.Map
+	replicatedCount     sync.Map
 }
 
 // struct to read in the config file
@@ -135,6 +138,7 @@ func NewNode(nodeId string) (*Node, error) {
 		newNode.NodeMap[node.Id] = node.Port
 		newNode.serverStatusMap.Store(node.Id, true)
 		newNode.reachableNodes[node.Id] = struct{}{}
+		newNode.failedAppendEntries.Store(nodeId, 0)
 	}
 
 	// initialize current alive to number of nodes in the config file

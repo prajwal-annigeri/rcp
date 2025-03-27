@@ -59,6 +59,7 @@ func (node *Node) sendHeartbeats() {
 				case c := <-node.logBufferChan:
 					log.Printf("Read log from channel: %v\n", c)
 					c.Term = node.currentTerm
+					// node.replicatedCount.Store(c.)
 					logsToSend = append(logsToSend, c)
 				default:
 					doneReading = true
@@ -77,31 +78,35 @@ func (node *Node) sendHeartbeats() {
 				PrevLogTerm:  node.lastTerm,
 				Entries:      logsToSend,
 			})
-			selfSuccess := false
+			// selfSuccess := false
 			if err != nil {
 				log.Printf("append entry to self failed: %v", err)
+				return
 			} else if resp.Success {
-				selfSuccess = true
+				// selfSuccess = true
+				node.replicatedCount.Store(node.lastIndex, 1)
+			} else {
+				return
 			}
 
 			// channel to collect all responses to AppendEntries
-			responseChan := make(chan *rcppb.AppendEntriesResponse)
+			// responseChan := make(chan *rcppb.AppendEntriesResponse)
 
 			// Send AppendEntries to all other nodes
 			for nodeId, client := range node.ClientMap {
-				go node.sendHeartbeatTo(client, nodeId, responseChan)
+				go node.sendHeartbeatTo(client, nodeId)
 			}
 
-			successResponses, maxTerm := countSuccessfulAppendEntries(responseChan, 100*time.Millisecond)
-			if selfSuccess {
-				successResponses += 1
-			}
-			if successResponses >= node.K+1 {
-				node.commitIndex = node.lastIndex
-			} else if maxTerm > node.currentTerm {
-				node.currentTerm = maxTerm
-				node.isLeader = false
-			}
+			// successResponses, maxTerm := countSuccessfulAppendEntries(responseChan, 100*time.Millisecond)
+			// if selfSuccess {
+			// 	successResponses += 1
+			// }
+			// if successResponses >= node.K+1 {
+			// 	node.commitIndex = node.lastIndex
+			// } else if maxTerm > node.currentTerm {
+			// 	node.currentTerm = maxTerm
+			// 	node.isLeader = false
+			// }
 
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -135,7 +140,7 @@ func (node *Node) constructAppendEntriesRequest(term int64, nodeId string) (*rcp
 	}, nil
 }
 
-func (node *Node) sendHeartbeatTo(client rcppb.RCPClient, nodeId string, responsesChan chan<- *rcppb.AppendEntriesResponse) {
+func (node *Node) sendHeartbeatTo(client rcppb.RCPClient, nodeId string) {
 	// log.Printf("Sending heartbeat to %s\n", nodeId)
 	req, err := node.constructAppendEntriesRequest(node.currentTerm, nodeId)
 	if err != nil {
@@ -155,32 +160,45 @@ func (node *Node) sendHeartbeatTo(client rcppb.RCPClient, nodeId string, respons
 		}
 		return
 	}
-
+	if len(req.Entries) > 0 {
+		log.Printf("Received appendentries response from %s: %v", nodeId, resp)
+	}
+	
 	go node.checkInsertRecoveryLog(nodeId)
 	if resp.Success {
 		currNextIndex, _ := node.nextIndex.Load(nodeId)
 		node.nextIndex.Store(nodeId, currNextIndex.(int64)+int64(len(req.Entries)))
 		if len(req.Entries) > 0 {
-			responsesChan <- resp
+			// responsesChan <- resp
+			if status, _ := node.serverStatusMap.Load(nodeId); status.(bool) {
+				node.increaseReplicationCount(req.PrevLogIndex + int64(len(req.Entries)))
+			}
+			
 		}
 		// log.Printf("Successful append entries to %s\n", nodeId)
 	} else {
-		currNextIndex, _ := node.nextIndex.Load(nodeId)
-		node.nextIndex.Store(nodeId, currNextIndex.(int64)-1)
+		if resp.Term > node.currentTerm {
+			node.currentTerm = resp.Term
+			node.isLeader = false
+		} else {
+			currNextIndex, _ := node.nextIndex.Load(nodeId)
+			node.nextIndex.Store(nodeId, currNextIndex.(int64)-1)
+		}
+		
 	}
 }
 
-func countSuccessfulAppendEntries(responsesChan <-chan *rcppb.AppendEntriesResponse, timeout time.Duration) (int, int64) {
-	waitTimer := time.After(timeout)
-	successResponses := 0
-	maxTerm := int64(0)
-	for {
-		select {
-		case resp := <-responsesChan:
-			successResponses += 1
-			maxTerm = max(maxTerm, resp.Term)
-		case <-waitTimer:
-			return successResponses, maxTerm
-		}
-	}
-}
+// func countSuccessfulAppendEntries(responsesChan <-chan *rcppb.AppendEntriesResponse, timeout time.Duration) (int, int64) {
+// 	waitTimer := time.After(timeout)
+// 	successResponses := 0
+// 	maxTerm := int64(0)
+// 	for {
+// 		select {
+// 		case resp := <-responsesChan:
+// 			successResponses += 1
+// 			maxTerm = max(maxTerm, resp.Term)
+// 		case <-waitTimer:
+// 			return successResponses, maxTerm
+// 		}
+// 	}
+// }
