@@ -130,6 +130,13 @@ func (node *Node) constructAppendEntriesRequest(term int64, nodeId string) (*rcp
 		return nil, err
 	}
 	nextLogIndex, _ := node.nextIndex.Load(nodeId)
+	delayRaw, ok := node.delays.Load(nodeId)
+	var delay int
+	if !ok {
+		delay = 0
+	} else {
+		delay = delayRaw.(int)
+	}
 	return &rcppb.AppendEntriesReq{
 		Term:         term,
 		LeaderId:     node.Id,
@@ -137,6 +144,7 @@ func (node *Node) constructAppendEntriesRequest(term int64, nodeId string) (*rcp
 		LeaderCommit: node.commitIndex,
 		PrevLogTerm:  prevLogTerm,
 		Entries:      entries,
+		Delay:        int64(delay),
 	}, nil
 }
 
@@ -163,7 +171,7 @@ func (node *Node) sendHeartbeatTo(client rcppb.RCPClient, nodeId string) {
 	if len(req.Entries) > 0 {
 		log.Printf("Received appendentries response from %s: %v", nodeId, resp)
 	}
-	
+
 	go node.checkInsertRecoveryLog(nodeId)
 	if resp.Success {
 		currNextIndex, _ := node.nextIndex.Load(nodeId)
@@ -173,7 +181,7 @@ func (node *Node) sendHeartbeatTo(client rcppb.RCPClient, nodeId string) {
 			if status, _ := node.serverStatusMap.Load(nodeId); status.(bool) {
 				node.increaseReplicationCount(req.PrevLogIndex + int64(len(req.Entries)))
 			}
-			
+
 		}
 		// log.Printf("Successful append entries to %s\n", nodeId)
 	} else {
@@ -184,7 +192,7 @@ func (node *Node) sendHeartbeatTo(client rcppb.RCPClient, nodeId string) {
 			currNextIndex, _ := node.nextIndex.Load(nodeId)
 			node.nextIndex.Store(nodeId, currNextIndex.(int64)-1)
 		}
-		
+
 	}
 }
 

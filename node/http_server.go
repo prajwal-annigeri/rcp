@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"rcp/rcppb"
+	"strconv"
 	"strings"
 )
 
@@ -137,6 +138,39 @@ func (node *Node) partitionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (node *Node) delayHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	to := r.URL.Query().Get("to")
+	delay := r.URL.Query().Get("delay")
+
+	if delay == "" || to == "" {
+		http.Error(w, "Missing 'key' or 'value'", http.StatusBadGateway)
+		return
+	}
+
+	log.Printf("Setting delay: To=%s, Delay=%s", to, delay)
+	var respData SuccessResponse
+	delayInt, err := strconv.ParseInt(delay, 10, 32)
+	if err != nil {
+		log.Printf("Error converting delay to int: %v", err)
+		respData = SuccessResponse{
+			Success: false,
+		}
+	} else {
+		node.delays.Store(to, int(delayInt))
+		respData = SuccessResponse{
+			Success: true,
+		}
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(respData)
+}
+
 func (node *Node) startHttpServer() {
 	log.Printf("Starting HTTP server on port %s\n", node.HttpPort)
 	http.HandleFunc("/put", node.handler)
@@ -144,6 +178,7 @@ func (node *Node) startHttpServer() {
 	http.HandleFunc("/kill", node.killHandler)
 	http.HandleFunc("/revive", node.reviveHandler)
 	http.HandleFunc("/partition", node.partitionHandler)
+	http.HandleFunc("/delay", node.delayHandler)
 	err := http.ListenAndServe(node.HttpPort, nil)
 	if err != nil {
 		log.Printf("Failed to start HTTP server: %v", err)

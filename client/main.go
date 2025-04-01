@@ -49,7 +49,8 @@ func displayMenu() {
 	fmt.Println("3. Kill server")
 	fmt.Println("4. Revive server")
 	fmt.Println("5. Partition")
-	fmt.Println("6. Exit")
+	fmt.Println("6. Set Delay")
+	fmt.Println("7. Exit")
 }
 
 // MapServerIDToHTTPPort creates a mapping of server IDs to HTTP ports
@@ -254,6 +255,46 @@ func reviveServer(serverMap map[string]string) {
 	defer resp.Body.Close()
 }
 
+func sendDelayRequest(serverMap map[string]string) {
+	reader := bufio.NewReader(os.Stdin)
+
+	// Ask for From, To and Delay
+	fmt.Print("Enter From: ")
+	from, _ := reader.ReadString('\n')
+	from = strings.TrimSpace(from)
+
+	httpPort, exists := serverMap[from]
+	if !exists {
+		fmt.Println("Invalid Server ID!")
+		return
+	}
+
+	fmt.Print("Enter To: ")
+	to, _ := reader.ReadString('\n')
+	to = strings.TrimSpace(to)
+
+	fmt.Print("Enter Delay (in milliseconds): ")
+	delay, _ := reader.ReadString('\n')
+	delay = strings.TrimSpace(delay)
+
+	// delay, err := strconv.Atoi(delayStr)
+	// if err != nil {
+	// 		fmt.Println("Invalid Delay value. Must be an integer.")
+	// 		return
+	// }
+
+	// Construct the HTTP request
+	urlStr := fmt.Sprintf("http://localhost%s/delay?from=%s&to=%s&delay=%s", httpPort, url.QueryEscape(from), url.QueryEscape(to), delay)
+	resp, err := http.Post(urlStr, "application/json", nil)
+	if err != nil {
+			fmt.Println("Error sending request:", err)
+			return
+	}
+	defer resp.Body.Close()
+
+	fmt.Println("Delay request sent! Response:", resp.Status)
+}
+
 func main() {
 	config, err := LoadConfig("../nodes.json")
 	if err != nil {
@@ -280,6 +321,8 @@ func main() {
 		case 5:
 			doPartition(serverMap)
 		case 6:
+			sendDelayRequest(serverMap)
+		case 7:
 			fmt.Println("Exiting...")
 			return
 

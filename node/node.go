@@ -69,6 +69,7 @@ type Node struct {
 
 	failedAppendEntries sync.Map
 	replicatedCount     sync.Map
+	delays              sync.Map
 }
 
 // struct to read in the config file
@@ -78,7 +79,7 @@ type ConfigFile struct {
 }
 
 // constructor
-func NewNode(nodeId string) (*Node, error) {
+func NewNode(thisNodeId string) (*Node, error) {
 	// reads config file
 	mapJson, err := os.Open("nodes.json")
 	if err != nil {
@@ -96,7 +97,7 @@ func NewNode(nodeId string) (*Node, error) {
 	}
 
 	// Initialize data store
-	dbPath := "./dbs/" + nodeId + ".db"
+	dbPath := "./dbs/" + thisNodeId + ".db"
 	db, dbCloseFunc, err := db.InitDatabase(dbPath)
 	if err != nil {
 		log.Fatalf("InitDatabase(%q): %v", dbPath, err)
@@ -106,7 +107,7 @@ func NewNode(nodeId string) (*Node, error) {
 	nodes = config.Nodes
 
 	newNode := &Node{
-		Id:                    nodeId,
+		Id:                    thisNodeId,
 		currentTerm:           0,
 		K:                     config.K,
 		db:                    db,
@@ -131,20 +132,21 @@ func NewNode(nodeId string) (*Node, error) {
 	// go through all the nodes defined in config file and map them to their gRPC ports
 	for _, node := range nodes {
 		// if current node, then assign ports to node object
-		if node.Id == nodeId {
+		if node.Id == thisNodeId {
 			newNode.HttpPort = node.HttpPort
 			newNode.Port = node.Port
 		}
 		newNode.NodeMap[node.Id] = node.Port
 		newNode.serverStatusMap.Store(node.Id, true)
 		newNode.reachableNodes[node.Id] = struct{}{}
-		newNode.failedAppendEntries.Store(nodeId, 0)
+		newNode.failedAppendEntries.Store(thisNodeId, 0)
+		newNode.delays.Store(node.Id, 0)
 	}
 
 	// initialize current alive to number of nodes in the config file
 	newNode.currAlive = int64(len(newNode.NodeMap))
-	if newNode.NodeMap[nodeId] == "" {
-		log.Fatalf("No port specified for ID: %s in config JSON", nodeId)
+	if newNode.NodeMap[thisNodeId] == "" {
+		log.Fatalf("No port specified for ID: %s in config JSON", thisNodeId)
 	}
 
 	newNode.resetElectionTimer()
@@ -256,11 +258,19 @@ func (node *Node) initNextIndex() {
 
 func (node *Node) sendRequestVote(client rcppb.RCPClient, term int64, votesChan chan *rcppb.RequestVoteResponse, nodeId string) {
 	log.Printf("Sending RequestVote to %s\n", nodeId)
+	delayRaw, ok := node.delays.Load(nodeId)
+	var delay int
+	if !ok {
+		delay = 0
+	} else {
+		delay = delayRaw.(int)
+	}
 	resp, _ := client.RequestVote(context.Background(), &rcppb.RequestVoteReq{
 		Term:         term,
 		CandidateId:  node.Id,
 		LastLogIndex: node.lastIndex,
 		LastLogTerm:  node.lastTerm,
+		Delay:        int64(delay),
 	})
 	log.Printf("Resp from %s: %v", nodeId, resp)
 	votesChan <- resp
