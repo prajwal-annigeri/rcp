@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"rcp/rcppb"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -21,6 +22,9 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 		}, status.Error(codes.Unavailable, "not alive")
 	}
 
+	// begin := time.Now()
+	// time.Sleep(time.Duration(appendEntryReq.Delay) * time.Millisecond)
+	// log.Printf("Slept for %v", time.Since(begin))
 	node.reachableSetLock.RLock()
 	defer node.reachableSetLock.RUnlock()
 	_, reachable := node.reachableNodes[appendEntryReq.LeaderId]
@@ -136,6 +140,9 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 			VoteGranted: false,
 		}, status.Error(codes.Unavailable, "not alive")
 	}
+	// begin := time.Now()
+	// time.Sleep(time.Duration(requestVoteReq.Delay) * time.Millisecond)
+	// log.Printf("Slept for %v", time.Since(begin))
 	node.reachableSetLock.RLock()
 	defer node.reachableSetLock.RUnlock()
 	_, reachable := node.reachableNodes[requestVoteReq.CandidateId]

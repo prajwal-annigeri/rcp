@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v5.29.3
-// source: proto/rcp.proto
+// source: rcppb/rcp.proto
 
 package rcppb
 
@@ -270,5 +270,5 @@ var RCP_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "proto/rcp.proto",
+	Metadata: "rcppb/rcp.proto",
 }
