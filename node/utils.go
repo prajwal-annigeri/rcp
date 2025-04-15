@@ -7,7 +7,7 @@ import (
 	"log"
 	"rcp/rcppb"
 	"strings"
-	"sync"
+	// "sync"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -64,7 +64,7 @@ func (node *Node) printState() {
 	log.Printf("%s", serverStatusString.String())
 }
 
-func (node *Node) forwardToLeader(key, value string) {
+func (node *Node) forwardToLeader(KV *rcppb.KV) {
 
 	// Construct the HTTP request
 	leader, ok := node.votedFor.Load(node.currentTerm)
@@ -74,17 +74,17 @@ func (node *Node) forwardToLeader(key, value string) {
 	}
 	client, ok := node.ClientMap[leader.(string)]
 	if ok {
-		client.Store(context.Background(), &rcppb.KV{Key: key, Value: value})
-		log.Printf("Forwarded req with key: %s, value: %s to leader: %s\n", key, value, leader.(string))
+		client.Store(context.Background(), &rcppb.KV{Key: KV.Key, Value: KV.Value})
+		log.Printf("Forwarded req with key: %s, value: %s to leader: %s\n", KV.Key, KV.Value, leader.(string))
 	}
 }
 
 func (node *Node) checkInsertRecoveryLog(nodeId string) {
+	node.recoverySetLock.Lock()
+	defer node.recoverySetLock.Unlock()
 	status, ok := node.serverStatusMap.Load(nodeId)
 	
-
 	if ok && !status.(bool) {
-		node.recoverySetLock.Lock()
 		_, exists := node.recoveryLogWaitingSet[nodeId]
 		if !exists {
 			node.recoveryLogWaitingSet[nodeId] = struct{}{}
@@ -95,14 +95,15 @@ func (node *Node) checkInsertRecoveryLog(nodeId string) {
 				Term:    node.currentTerm,
 			}
 		}
-		node.recoverySetLock.Unlock()
 	}
 }
 
 func (node *Node) checkInsertFailureLog(nodeId string) {
+	node.failureSetLock.Lock()
+	defer node.failureSetLock.Unlock()
 	status, ok := node.serverStatusMap.Load(nodeId)
 	if ok && status.(bool) {
-		node.failureSetLock.Lock()
+		
 		_, exists := node.failureLogWaitingSet[nodeId]
 		if !exists {
 			node.failureLogWaitingSet[nodeId] = struct{}{}
@@ -113,7 +114,6 @@ func (node *Node) checkInsertFailureLog(nodeId string) {
 				Term:    node.currentTerm,
 			}
 		}
-		node.failureSetLock.Unlock()
 	}
 }
 
@@ -130,19 +130,19 @@ func (node *Node) removeFromRecoverySet(nodeId string) {
 }
 
 
-var incMutex = sync.Mutex{}
-func (node *Node) increaseReplicationCount(index int64) {
+// var incMutex = sync.Mutex{}
+// func (node *Node) increaseReplicationCount(index int64) {
 	
-	incMutex.Lock()
-	defer incMutex.Unlock()
-	cnt, ok := node.replicatedCount.Load(index)
-	if !ok {
-		log.Println("BUG increaseReplicationCount")
-		return
-	}
-	node.replicatedCount.Store(index, cnt.(int) + 1)
-	log.Printf("Increased replication count of index %d to %d", index, cnt.(int) + 1)
-	if cnt.(int) + 1 == node.K + 1 {
-		node.commitIndex = max(node.commitIndex, index)
-	}
-}
+// 	incMutex.Lock()
+// 	defer incMutex.Unlock()
+// 	cnt, ok := node.replicatedCount.Load(index)
+// 	if !ok {
+// 		log.Println("BUG increaseReplicationCount")
+// 		return
+// 	}
+// 	node.replicatedCount.Store(index, cnt.(int) + 1)
+// 	log.Printf("Increased replication count of index %d to %d", index, cnt.(int) + 1)
+// 	if cnt.(int) + 1 == node.K + 1 {
+// 		node.commitIndex = max(node.commitIndex, index)
+// 	}
+// }

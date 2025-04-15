@@ -23,30 +23,32 @@ type Node struct {
 	currentTerm int64
 
 	// TODO: persist votedFor on disk
-	votedFor        sync.Map
-	db              *db.Database
-	commitIndex     int64
-	execIndex       int64
-	lastApplied     int64
-	nextIndex       sync.Map
-	matchIndex      map[string]int
-	lastIndex       int64
-	lastTerm        int64
-	Id              string            `json:"id"`
-	Port            string            `json:"port"`
-	HttpPort        string            `json:"http_port"`
-	NodeMap         map[string]string `json:"nodeMap"`
-	ConnMap         map[string]*grpc.ClientConn
-	ClientMap       map[string]rcppb.RCPClient
-	Live            bool
-	DBCloseFunc     func() error
-	K               int
-	isLeader        bool
-	isCandidate     bool
-	electionTimer   *time.Timer
-	currAlive       int64
-	serverStatusMap sync.Map
-	logBufferChan   chan *rcppb.LogEntry // Read from HTTP request into this buffer
+	votedFor           sync.Map
+	db                 *db.Database
+	commitIndex        int64
+	execIndex          int64
+	lastApplied        int64
+	nextIndex          sync.Map
+	matchIndex         map[string]int
+	lastIndex          int64
+	lastTerm           int64
+	Id                 string            `json:"id"`
+	Port               string            `json:"port"`
+	HttpPort           string            `json:"http_port"`
+	NodeMap            map[string]string `json:"nodeMap"`
+	ConnMap            map[string]*grpc.ClientConn
+	ClientMap          map[string]rcppb.RCPClient
+	Live               bool
+	DBCloseFunc        func() error
+	K                  int
+	isLeader           bool
+	isCandidate        bool
+	electionTimer      *time.Timer
+	currAlive          int64
+	serverStatusMap    sync.Map
+	logBufferChan      chan *rcppb.LogEntry // Read from HTTP request into this buffer
+	appendEntriesMutex sync.Mutex
+	requestVoteMutex   sync.Mutex
 
 	/// The below hash sets are used to prevent duplicate failure/recovery logs from being inserted.
 	//
@@ -68,8 +70,8 @@ type Node struct {
 	reachableSetLock sync.RWMutex
 
 	failedAppendEntries sync.Map
-	replicatedCount     sync.Map
-	delays              sync.Map
+	// replicatedCount     sync.Map
+	delays sync.Map
 }
 
 // struct to read in the config file
@@ -157,7 +159,7 @@ func NewNode(thisNodeId string) (*Node, error) {
 func (node *Node) Start() {
 
 	// starts HTTP server used by clients to interact with server
-	go node.startHttpServer()
+	// go node.startHttpServer()
 	time.Sleep(5 * time.Second)
 
 	// establish gRPC connections with ohter nodes
