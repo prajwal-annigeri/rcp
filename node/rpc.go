@@ -28,15 +28,15 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 	// time.Sleep(time.Duration(appendEntryReq.Delay) * time.Millisecond)
 	// log.Printf("Slept for %v", time.Since(begin))
 
-	node.appendEntriesMutex.Lock()
-	defer node.appendEntriesMutex.Unlock()
+	node.mutex.Lock()
+	defer node.mutex.Unlock()
 	node.reachableSetLock.RLock()
 	_, reachable := node.reachableNodes[appendEntryReq.LeaderId]
 	node.reachableSetLock.RUnlock()
 	if !reachable {
 		log.Printf("Received AppendEntries: %s Term: %d I'm not reachable", appendEntryReq.LeaderId, appendEntryReq.Term)
 		return &rcppb.AppendEntriesResponse{
-			Term:        node.currentTerm,
+			Term:    node.currentTerm,
 			Success: false,
 		}, status.Error(codes.Unavailable, "not reachable")
 	}
@@ -102,7 +102,7 @@ func (node *Node) insertLogs(appendEntryReq *rcppb.AppendEntriesReq) error {
 	for _, entry := range appendEntryReq.Entries {
 		log.Printf("Putting entry: %v\n", entry)
 		failedNode, recoveredNode, err := node.db.PutLogAtIndex(currIndex, entry)
-		
+
 		if err != nil {
 			return err
 		}
@@ -154,12 +154,12 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 	// begin := time.Now()
 	// time.Sleep(time.Duration(requestVoteReq.Delay) * time.Millisecond)
 	// log.Printf("Slept for %v", time.Since(begin))
-	node.appendEntriesMutex.Lock()
-	defer node.appendEntriesMutex.Unlock()
+	node.mutex.Lock()
+	defer node.mutex.Unlock()
 	node.reachableSetLock.RLock()
 	_, reachable := node.reachableNodes[requestVoteReq.CandidateId]
 	node.reachableSetLock.RUnlock()
-	
+
 	if !reachable {
 		log.Printf("Received RequestVote: %s Term: %d I'm not reachable", requestVoteReq.CandidateId, requestVoteReq.Term)
 		return &rcppb.RequestVoteResponse{
@@ -225,7 +225,6 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 
 func (node *Node) Store(ctx context.Context, KV *rcppb.KV) (*wrapperspb.BoolValue, error) {
 
-
 	if KV.Key == "" {
 		return nil, errors.New("key cannot be empty")
 	}
@@ -252,7 +251,6 @@ func (node *Node) Store(ctx context.Context, KV *rcppb.KV) (*wrapperspb.BoolValu
 	}
 	return &wrapperspb.BoolValue{Value: true}, nil
 }
-
 
 func (node *Node) Get(ctx context.Context, req *rcppb.GetValueReq) (*rcppb.GetValueResponse, error) {
 
@@ -281,7 +279,7 @@ func (node *Node) Partition(ctx context.Context, req *rcppb.PartitionReq) (*wrap
 	for _, nodeId := range req.ReachableNodes {
 		node.reachableNodes[nodeId] = struct{}{}
 	}
-	
+
 	return &wrapperspb.BoolValue{Value: true}, nil
 }
 
