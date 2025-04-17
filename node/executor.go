@@ -35,19 +35,22 @@ func (node *Node) callbacker() {
 	for {
 		if node.commitIndex > currIndex {
 			currIndex += 1
-			logEntry, err := node.db.GetLogAtIndex(currIndex)
-			if err == nil {
-				callbackChannelRaw, ok := node.callbackChannelMap.Load(logEntry.CallbackChannelId)
-				if !ok {
-					log.Println("no callback channel")
-					continue
-				}
-				callbackChannel := callbackChannelRaw.(chan struct{})
-				callbackChannel <- struct{}{}
-				close(callbackChannel)
-				
-			}
+			go node.doCallback(currIndex)
 		}
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
+func (node *Node) doCallback(index int64) {
+	logEntry, err := node.db.GetLogAtIndex(index)
+	if err == nil {
+		callbackChannelRaw, ok := node.callbackChannelMap.Load(logEntry.CallbackChannelId)
+		if !ok {
+			log.Println("no callback channel")
+			return
+		}
+		callbackChannel := callbackChannelRaw.(chan struct{})
+		callbackChannel <- struct{}{}
+		close(callbackChannel)
 	}
 }
