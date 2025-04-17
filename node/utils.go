@@ -7,8 +7,8 @@ import (
 	"log"
 	"rcp/rcppb"
 	"strings"
-	// "sync"
 
+	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -129,20 +129,8 @@ func (node *Node) removeFromRecoverySet(nodeId string) {
 	delete(node.recoveryLogWaitingSet, nodeId)
 }
 
-
-// var incMutex = sync.Mutex{}
-// func (node *Node) increaseReplicationCount(index int64) {
-	
-// 	incMutex.Lock()
-// 	defer incMutex.Unlock()
-// 	cnt, ok := node.replicatedCount.Load(index)
-// 	if !ok {
-// 		log.Println("BUG increaseReplicationCount")
-// 		return
-// 	}
-// 	node.replicatedCount.Store(index, cnt.(int) + 1)
-// 	log.Printf("Increased replication count of index %d to %d", index, cnt.(int) + 1)
-// 	if cnt.(int) + 1 == node.K + 1 {
-// 		node.commitIndex = max(node.commitIndex, index)
-// 	}
-// }
+func (node *Node) makeCallbackChannel() string {
+	id := uuid.New().String()
+	node.callbackChannelMap.Store(id, make(chan struct{}))
+	return id
+}

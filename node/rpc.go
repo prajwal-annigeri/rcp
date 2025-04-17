@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"rcp/rcppb"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -210,19 +211,6 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 	}, status.Error(codes.PermissionDenied, fmt.Sprintf("already voted for %s for term %d", votedFor.(string), requestVoteReq.Term))
 }
 
-// func (node *Node) Store(ctx context.Context, KV *rcppb.KV) (*rcppb.StoreKVResponse, error) {
-// 	if node.isLeader {
-// 		node.logBufferChan <- &rcppb.LogEntry{
-// 			LogType: "store",
-// 			Key:     KV.Key,
-// 			Value:   KV.Value,
-// 		}
-// 	}
-// 	return &rcppb.StoreKVResponse{
-// 		Success: true,
-// 	}, nil
-// }
-
 func (node *Node) Store(ctx context.Context, KV *rcppb.KV) (*wrapperspb.BoolValue, error) {
 
 	if KV.Key == "" {
@@ -243,10 +231,28 @@ func (node *Node) Store(ctx context.Context, KV *rcppb.KV) (*wrapperspb.BoolValu
 			return grpcClient.Store(context.Background(), &rcppb.KV{Key: KV.Key, Value: KV.Value})
 		}
 	} else {
+		callbackChannelId := node.makeCallbackChannel()
 		node.logBufferChan <- &rcppb.LogEntry{
-			LogType: "store",
-			Key:     KV.Key,
-			Value:   KV.Value,
+			LogType:           "store",
+			Key:               KV.Key,
+			Value:             KV.Value,
+			CallbackChannelId: callbackChannelId,
+		}
+
+		callbackChannelRaw, ok := node.callbackChannelMap.Load(callbackChannelId)
+		if !ok {
+			log.Printf("BUG: no callback channel")
+			return nil, errors.New("no callback channel")
+		}
+
+		callbackChannel := callbackChannelRaw.(chan struct{})
+
+		select {
+		case <-callbackChannel:
+			log.Println("Got callback")
+			return &wrapperspb.BoolValue{Value: true}, nil
+		case <-time.After(1 * time.Second):
+			return nil, errors.New("timed out")
 		}
 	}
 	return &wrapperspb.BoolValue{Value: true}, nil

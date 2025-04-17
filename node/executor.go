@@ -1,28 +1,52 @@
 package node
 
-import "time"
-
+import (
+	"log"
+	"time"
+)
 
 // The executor function, runs as a goroutine
 func (node *Node) executor() {
 	for {
 		if node.commitIndex > node.execIndex {
-			log, err := node.db.GetLogAtIndex(node.execIndex + 1)
+			logEntry, err := node.db.GetLogAtIndex(node.execIndex + 1)
 			if err == nil {
-				if log.LogType == "store" {
-					node.db.PutKV(log.Key, log.Value)
-				} else if log.LogType == "failure" {
+				if logEntry.LogType == "store" {
+					node.db.PutKV(logEntry.Key, logEntry.Value)
+				} else if logEntry.LogType == "failure" {
 					node.currAlive -= 1
-					node.serverStatusMap.Store(log.NodeId, false)
-					go node.removeFromFailureSet(log.NodeId)
-				} else if log.LogType == "recovery" {
+					node.serverStatusMap.Store(logEntry.NodeId, false)
+					go node.removeFromFailureSet(logEntry.NodeId)
+				} else if logEntry.LogType == "recovery" {
 					node.currAlive += 1
-					node.serverStatusMap.Store(log.NodeId, true)
-					go node.removeFromRecoverySet(log.NodeId)
+					node.serverStatusMap.Store(logEntry.NodeId, true)
+					go node.removeFromRecoverySet(logEntry.NodeId)
 				}
 				node.execIndex += 1
 			}
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+
+func (node *Node) callbacker() {
+	currIndex := int64(-1)
+	for {
+		if node.commitIndex > currIndex {
+			logEntry, err := node.db.GetLogAtIndex(currIndex + 1)
+			if err == nil {
+				callbackChannelRaw, ok := node.callbackChannelMap.Load(logEntry.CallbackChannelId)
+				if !ok {
+					log.Println("BUG: no callback channel")
+					continue
+				}
+				callbackChannel := callbackChannelRaw.(chan struct{})
+				callbackChannel <- struct{}{}
+				close(callbackChannel)
+				currIndex += 1
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

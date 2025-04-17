@@ -65,8 +65,9 @@ type Node struct {
 	recoverySetLock       sync.Mutex
 
 	// reachable nodes set to simulate partitions
-	reachableNodes   map[string]struct{}
-	reachableSetLock sync.RWMutex
+	reachableNodes     map[string]struct{}
+	reachableSetLock   sync.RWMutex
+	callbackChannelMap sync.Map
 
 	failedAppendEntries sync.Map
 	// replicatedCount     sync.Map
@@ -175,6 +176,8 @@ func (node *Node) Start() {
 
 	//start executor goroutine which applies logs to state machine
 	go node.executor()
+
+	go node.callbacker()
 
 	for {
 		printMenu()

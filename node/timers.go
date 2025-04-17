@@ -109,7 +109,6 @@ func (node *Node) sendHeartbeats() {
 				select {
 				case resp := <-responseChan:
 					successResponses += 1
-					log.Printf("succ: %d", successResponses)
 					
 					if resp.Term > node.currentTerm {
 						node.currentTerm = resp.Term
