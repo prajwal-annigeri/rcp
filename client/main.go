@@ -52,7 +52,9 @@ func displayMenu() {
 	fmt.Println("4. Revive server")
 	fmt.Println("5. Partition")
 	fmt.Println("6. Set Delay")
-	fmt.Println("7. Exit")
+	fmt.Println("7. Get Balance")
+	fmt.Println("8. Deposit Checking")
+	fmt.Println("0. Exit")
 }
 
 // MapServerIDToHTTPPort creates a mapping of server IDs to HTTP ports
@@ -279,6 +281,71 @@ func sendDelayRequest(grpcClientMap map[string]rcppb.RCPClient) {
 	fmt.Println("Delay request sent! Response: ", resp.Value)
 }
 
+func getBalance(grpcClientMap map[string]rcppb.RCPClient) {
+	reader := bufio.NewReader(os.Stdin)
+
+	// Ask for Server ID
+	fmt.Print("Enter Server ID (e.g., S1, S2, S3): ")
+	serverID, _ := reader.ReadString('\n')
+	serverID = strings.TrimSpace(serverID)
+
+	// Ask for Key
+	fmt.Print("Enter Account ID: ")
+	accountID, _ := reader.ReadString('\n')
+	accountID = strings.TrimSpace(accountID)
+
+	grpcClient, exists := grpcClientMap[serverID]
+	if !exists {
+		fmt.Println("Invalid Server ID!")
+		return
+	}
+
+	resp, err := grpcClient.GetBalance(context.Background(), &rcppb.GetBalanceRequest{AccountId: accountID})
+	if err != nil {
+		log.Printf("Error response: %v", err)
+		return
+	}
+
+	log.Printf("(%s) %s: Savings: %d, Checking: %d", serverID, accountID, resp.SavingsBalance, resp.CheckingBalance)
+}
+
+func depositChecking(grpcClientMap map[string]rcppb.RCPClient) {
+	reader := bufio.NewReader(os.Stdin)
+
+	// Ask for Server ID
+	fmt.Print("Enter Server ID (e.g., S1, S2, S3): ")
+	serverID, _ := reader.ReadString('\n')
+	serverID = strings.TrimSpace(serverID)
+
+	// Ask for Key
+	fmt.Print("Enter Account ID: ")
+	accountID, _ := reader.ReadString('\n')
+	accountID = strings.TrimSpace(accountID)
+
+	fmt.Print("Enter Amount: ")
+	amount, _ := reader.ReadString('\n')
+	amountInt, err := strconv.ParseInt(strings.TrimSpace(amount), 10, 64)
+	if err != nil {
+		log.Printf("Error converting amount to int: %v", err)
+		return
+	}
+
+	grpcClient, exists := grpcClientMap[serverID]
+	if !exists {
+		fmt.Println("Invalid Server ID!")
+		return
+	}
+
+	resp, err := grpcClient.DepositChecking(context.Background(), &rcppb.DepositCheckingRequest{AccountId: accountID, Amount: amountInt})
+	if err != nil {
+		log.Printf("Error response: %v", err)
+		return
+	}
+
+	log.Printf("Response: %t", resp.Value)
+}
+
+
 func main() {
 	config, err := LoadConfig("../nodes.json")
 	if err != nil {
@@ -310,6 +377,10 @@ func main() {
 		case 6:
 			sendDelayRequest(grpcClientMap)
 		case 7:
+			getBalance(grpcClientMap)
+		case 8:
+			depositChecking(grpcClientMap)
+		case 0:
 			fmt.Println("Exiting...")
 			return
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"rcp/db"
 	"rcp/rcppb"
 	"time"
 
@@ -301,4 +302,67 @@ func (node *Node) Delay(ctx context.Context, req *rcppb.DelayRequest) (*wrappers
 
 	node.delays.Store(to, delay)
 	return &wrapperspb.BoolValue{Value: true}, nil
+}
+
+
+func (node *Node) GetBalance(ctx context.Context, req *rcppb.GetBalanceRequest) (*rcppb.GetBalanceResponse, error){
+	err := node.db.Lock(context.Background(), req.AccountId)
+	defer node.db.Unlock(req.AccountId)
+	if err != nil {
+		return nil, err
+	}
+	checking, err := node.db.GetBalance(req.AccountId, db.CheckingAccount)
+	if err != nil {
+		return nil, err
+	}
+	savings, err := node.db.GetBalance(req.AccountId, db.SavingsAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	return &rcppb.GetBalanceResponse{CheckingBalance: checking, SavingsBalance: savings}, nil
+}
+
+func (node *Node) DepositChecking(ctx context.Context, req *rcppb.DepositCheckingRequest) (*wrapperspb.BoolValue, error) {
+	if !node.isLeader {
+		leader, ok := node.votedFor.Load(node.currentTerm)
+		if !ok {
+			log.Println("BUG: NO LEADER")
+			return nil, errors.New("no leader")
+		}
+		grpcClient, ok := node.ClientMap[leader.(string)]
+		if ok {
+			log.Printf("Forwarded req to leader: %s\n", leader.(string))
+			return grpcClient.DepositChecking(context.Background(), req)
+		}
+	} else {
+		callbackChannelId := node.makeCallbackChannel()
+		node.logBufferChan <- &rcppb.LogEntry{
+			LogType: "bank",
+			Transaction1: &rcppb.Transaction{
+				AccountId: req.AccountId,
+				Amount: req.Amount,
+				AccountType: string(db.CheckingAccount),
+			},
+			CallbackChannelId: callbackChannelId,
+		}
+
+		callbackChannelRaw, ok := node.callbackChannelMap.Load(callbackChannelId)
+		if !ok {
+			log.Printf("BUG: no callback channel")
+			return nil, errors.New("no callback channel")
+		}
+
+		callbackChannel := callbackChannelRaw.(chan struct{})
+
+		select {
+		case <-callbackChannel:
+			log.Println("Got callback")
+			return &wrapperspb.BoolValue{Value: true}, nil
+		case <-time.After(1 * time.Second):
+			return nil, errors.New("timed out")
+		}
+	}
+	return &wrapperspb.BoolValue{Value: true}, nil
+	
 }

@@ -2,6 +2,7 @@ package node
 
 import (
 	"log"
+	"rcp/db"
 	"time"
 )
 
@@ -21,6 +22,8 @@ func (node *Node) executor() {
 					node.currAlive += 1
 					node.serverStatusMap.Store(logEntry.NodeId, true)
 					go node.removeFromRecoverySet(logEntry.NodeId)
+				} else if logEntry.LogType == "bank" {
+					node.db.ModifyBalance(logEntry.Transaction1.AccountId, db.AccountType(logEntry.Transaction1.AccountType), logEntry.Transaction1.Amount)
 				}
 				node.execIndex += 1
 			}

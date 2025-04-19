@@ -1,12 +1,18 @@
 package db
 
 import (
+	"fmt"
+	"strconv"
+
 	bolt "go.etcd.io/bbolt"
 )
 
 var (
-	logsBucket = []byte("logs")
-	kvBucket   = []byte("store")
+	logsBucket     = []byte("logs")
+	kvBucket       = []byte("store")
+	savingsBucket  = []byte("savings")
+	checkingBucket = []byte("checking")
+	locksBucket    = []byte("locks")
 )
 
 type Database struct {
@@ -28,19 +34,55 @@ func InitDatabase(dbPath string) (db *Database, closeFunc func() error, err erro
 		return nil, nil, err
 	}
 
+	if err := db.initializeAccounts(); err != nil {
+		boltDB.Close()
+		return nil, nil, err
+	}
+
 	return db, boltDB.Close, nil
 }
 
 func (d *Database) createBuckets() error {
 	return d.db.Update(func(tx *bolt.Tx) error {
-		if _, err := tx.CreateBucketIfNotExists(logsBucket); err != nil {
-			return err
+		bucketsToCreate := [][]byte{
+			logsBucket,
+			kvBucket,
+			savingsBucket,
+			checkingBucket,
+			locksBucket,
 		}
 
-		if _, err := tx.CreateBucketIfNotExists(kvBucket); err != nil {
-			return err
+		for _, bucketName := range bucketsToCreate {
+			if _, err := tx.CreateBucketIfNotExists(bucketName); err != nil {
+				return fmt.Errorf("failed to create bucket %s: %w", string(bucketName), err)
+			}
+		}
+		return nil
+	})
+}
+
+func (d *Database) initializeAccounts() error {
+	zeroBalanceBytes := []byte("0")
+
+	return d.db.Update(func(tx *bolt.Tx) error {
+		checkingB := tx.Bucket(checkingBucket)
+		if checkingB == nil {
+			return fmt.Errorf("checking bucket not found during init")
+		}
+		savingsB := tx.Bucket(savingsBucket)
+		if savingsB == nil {
+			return fmt.Errorf("savings bucket not found during init")
 		}
 
+		for i := int64(1); i <= 100; i++ {
+			keyBytes := []byte(strconv.FormatInt(i, 10))
+			if err := checkingB.Put(keyBytes, zeroBalanceBytes); err != nil {
+				return fmt.Errorf("failed to set checking balance for account %d: %w", i, err)
+			}
+			if err := savingsB.Put(keyBytes, zeroBalanceBytes); err != nil {
+				return fmt.Errorf("failed to set savings balance for account %d: %w", i, err)
+			}
+		}
 		return nil
 	})
 }
