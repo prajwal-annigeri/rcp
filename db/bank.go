@@ -95,9 +95,38 @@ func (d *Database) ModifyBalance(accountID string, accountType AccountType, amou
 	if err != nil {
 		return err
 	}
-	balance, err := d.GetBalance(accountID, accountType)
-	if err != nil {
-		return err
-	}
-	return d.PutBalance(accountID, accountType, balance + amount)
+	keyBytes := []byte(accountID)
+
+	return d.db.Update(func(tx *bolt.Tx) error {
+		b, err := d.getBucketByType(tx, accountType)
+		if err != nil {
+			return err
+		}
+
+		// Retrieve the current balance
+		valueBytes := b.Get(keyBytes)
+		if valueBytes == nil {
+			return fmt.Errorf("no entry for account id: %s (%s)", accountID, accountType)
+		}
+
+		balanceString := string(valueBytes)
+		currentBalance, err := strconv.ParseInt(balanceString, 10, 64)
+		if err != nil {
+			return fmt.Errorf("corrupt balance data for account %s (%s): failed to parse '%s' as int64: %w",
+				accountID, accountType, balanceString, err)
+		}
+
+		newBalance := currentBalance + amount
+
+		// Store the new balance within the same transaction
+		balanceString = strconv.FormatInt(newBalance, 10)
+		valueBytes = []byte(balanceString)
+
+		if err := b.Put(keyBytes, valueBytes); err != nil {
+			return fmt.Errorf("failed to put new balance for account %s (%s): %w",
+				accountID, accountType, err)
+		}
+
+		return nil
+	})
 }

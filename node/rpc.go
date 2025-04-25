@@ -304,8 +304,7 @@ func (node *Node) Delay(ctx context.Context, req *rcppb.DelayRequest) (*wrappers
 	return &wrapperspb.BoolValue{Value: true}, nil
 }
 
-
-func (node *Node) GetBalance(ctx context.Context, req *rcppb.GetBalanceRequest) (*rcppb.GetBalanceResponse, error){
+func (node *Node) GetBalance(ctx context.Context, req *rcppb.GetBalanceRequest) (*rcppb.GetBalanceResponse, error) {
 	err := node.db.Lock(context.Background(), req.AccountId)
 	defer node.db.Unlock(req.AccountId)
 	if err != nil {
@@ -333,15 +332,17 @@ func (node *Node) DepositChecking(ctx context.Context, req *rcppb.DepositCheckin
 		grpcClient, ok := node.ClientMap[leader.(string)]
 		if ok {
 			log.Printf("Forwarded req to leader: %s\n", leader.(string))
-			return grpcClient.DepositChecking(context.Background(), req)
+			return grpcClient.DepositChecking(ctx, req)
+		} else {
+			return nil, fmt.Errorf("no grpc client for %s", leader)
 		}
 	} else {
 		callbackChannelId := node.makeCallbackChannel()
 		node.logBufferChan <- &rcppb.LogEntry{
 			LogType: "bank",
 			Transaction1: &rcppb.Transaction{
-				AccountId: req.AccountId,
-				Amount: req.Amount,
+				AccountId:   req.AccountId,
+				Amount:      req.Amount,
 				AccountType: string(db.CheckingAccount),
 			},
 			CallbackChannelId: callbackChannelId,
@@ -363,6 +364,257 @@ func (node *Node) DepositChecking(ctx context.Context, req *rcppb.DepositCheckin
 			return nil, errors.New("timed out")
 		}
 	}
-	return &wrapperspb.BoolValue{Value: true}, nil
-	
+	// return &wrapperspb.BoolValue{Value: true}, nil
+
+}
+
+func (node *Node) WriteCheck(ctx context.Context, req *rcppb.WriteCheckRequest) (*wrapperspb.BoolValue, error) {
+	if !node.isLeader {
+		leader, ok := node.votedFor.Load(node.currentTerm)
+		if !ok {
+			log.Println("BUG: NO LEADER")
+			return nil, errors.New("no leader")
+		}
+		grpcClient, ok := node.ClientMap[leader.(string)]
+		if ok {
+			log.Printf("Forwarded req to leader: %s\n", leader.(string))
+			return grpcClient.WriteCheck(ctx, req)
+		} else {
+			return nil, fmt.Errorf("no grpc client for %s", leader)
+		}
+	} else {
+		callbackChannelId := node.makeCallbackChannel()
+		err := node.db.Lock(ctx, req.AccountId)
+		defer node.db.Unlock(req.AccountId)
+		if err != nil {
+			return nil, err
+		}
+		balance, err := node.db.GetBalance(req.AccountId, db.CheckingAccount)
+		if err != nil {
+			return nil, err
+		}
+
+		if balance < req.Amount {
+			return nil, fmt.Errorf("insufficient balance: %d", balance)
+		}
+
+		node.logBufferChan <- &rcppb.LogEntry{
+			LogType: "bank",
+			Transaction1: &rcppb.Transaction{
+				AccountId:   req.AccountId,
+				Amount:      -1 * req.Amount,
+				AccountType: string(db.CheckingAccount),
+			},
+			CallbackChannelId: callbackChannelId,
+		}
+
+		callbackChannelRaw, ok := node.callbackChannelMap.Load(callbackChannelId)
+		if !ok {
+			log.Printf("BUG: no callback channel")
+			return nil, errors.New("no callback channel")
+		}
+
+		callbackChannel := callbackChannelRaw.(chan struct{})
+
+		select {
+		case <-callbackChannel:
+			log.Println("Got callback")
+			return &wrapperspb.BoolValue{Value: true}, nil
+		case <-time.After(1 * time.Second):
+			return nil, errors.New("timed out")
+		}
+	}
+	// return &wrapperspb.BoolValue{Value: true}, nil
+}
+
+func (node *Node) SendPayment(ctx context.Context, req *rcppb.SendPaymentRequest) (*wrapperspb.BoolValue, error) {
+	if !node.isLeader {
+		leader, ok := node.votedFor.Load(node.currentTerm)
+		if !ok {
+			log.Println("BUG: NO LEADER")
+			return nil, errors.New("no leader")
+		}
+		grpcClient, ok := node.ClientMap[leader.(string)]
+		if ok {
+			log.Printf("Forwarded req to leader: %s\n", leader.(string))
+			return grpcClient.SendPayment(ctx, req)
+		} else {
+			return nil, fmt.Errorf("no grpc client for %s", leader)
+		}
+	} else {
+		callbackChannelId := node.makeCallbackChannel()
+		err := node.db.Lock(ctx, req.AccountIdFrom)
+		defer node.db.Unlock(req.AccountIdFrom)
+		if err != nil {
+			return nil, err
+		}
+		err = node.db.Lock(ctx, req.AccountIdTo)
+		defer node.db.Unlock(req.AccountIdTo)
+		if err != nil {
+			return nil, err
+		}
+		balance, err := node.db.GetBalance(req.AccountIdFrom, db.CheckingAccount)
+		if err != nil {
+			return nil, err
+		}
+
+		if balance < req.Amount {
+			return nil, fmt.Errorf("insufficient balance: %d", balance)
+		}
+
+		node.logBufferChan <- &rcppb.LogEntry{
+			LogType: "bank",
+			Transaction1: &rcppb.Transaction{
+				AccountId:   req.AccountIdFrom,
+				Amount:      -1 * req.Amount,
+				AccountType: string(db.CheckingAccount),
+			},
+			Transaction2: &rcppb.Transaction{
+				AccountId:   req.AccountIdTo,
+				Amount:      req.Amount,
+				AccountType: string(db.CheckingAccount),
+			},
+			CallbackChannelId: callbackChannelId,
+		}
+
+		callbackChannelRaw, ok := node.callbackChannelMap.Load(callbackChannelId)
+		if !ok {
+			log.Printf("BUG: no callback channel")
+			return nil, errors.New("no callback channel")
+		}
+
+		callbackChannel := callbackChannelRaw.(chan struct{})
+
+		select {
+		case <-callbackChannel:
+			log.Println("Got callback")
+			return &wrapperspb.BoolValue{Value: true}, nil
+		case <-time.After(1 * time.Second):
+			return nil, errors.New("timed out")
+		}
+	}
+}
+
+func (node *Node) TransactSavings(ctx context.Context, req *rcppb.TransactSavingsRequest) (*wrapperspb.BoolValue, error) {
+	if !node.isLeader {
+		leader, ok := node.votedFor.Load(node.currentTerm)
+		if !ok {
+			log.Println("BUG: NO LEADER")
+			return nil, errors.New("no leader")
+		}
+		grpcClient, ok := node.ClientMap[leader.(string)]
+		if ok {
+			log.Printf("Forwarded req to leader: %s\n", leader.(string))
+			return grpcClient.TransactSavings(ctx, req)
+		} else {
+			return nil, fmt.Errorf("no grpc client for %s", leader)
+		}
+	} else {
+		err := node.db.Lock(ctx, req.AccountId)
+		defer node.db.Unlock(req.AccountId)
+		if err != nil {
+			return nil, err
+		}
+
+		balance, err := node.db.GetBalance(req.AccountId, db.SavingsAccount)
+		if err != nil {
+			return nil, err
+		}
+
+		newBalance := balance + req.Amount
+		if newBalance < 0 {
+			return nil, fmt.Errorf("insufficient balance: %d", balance)
+		}
+
+		callbackChannelId := node.makeCallbackChannel()
+		node.logBufferChan <- &rcppb.LogEntry{
+			LogType: "bank",
+			Transaction1: &rcppb.Transaction{
+				AccountId:   req.AccountId,
+				Amount:      req.Amount,
+				AccountType: string(db.SavingsAccount),
+			},
+			CallbackChannelId: callbackChannelId,
+		}
+		
+		callbackChannelRaw, ok := node.callbackChannelMap.Load(callbackChannelId)
+		if !ok {
+			log.Printf("BUG: no callback channel")
+			return nil, errors.New("no callback channel")
+		}
+
+		callbackChannel := callbackChannelRaw.(chan struct{})
+
+		select {
+		case <-callbackChannel:
+			log.Println("Got callback")
+			return &wrapperspb.BoolValue{Value: true}, nil
+		case <-time.After(1 * time.Second):
+			return nil, errors.New("timed out")
+		}
+	}
+}
+
+func (node *Node) Amalgamate(ctx context.Context, req *rcppb.AmalgamateRequest) (*wrapperspb.BoolValue, error) {
+	if !node.isLeader {
+		leader, ok := node.votedFor.Load(node.currentTerm)
+		if !ok {
+			log.Println("BUG: NO LEADER")
+			return nil, errors.New("no leader")
+		}
+		grpcClient, ok := node.ClientMap[leader.(string)]
+		if ok {
+			log.Printf("Forwarded req to leader: %s\n", leader.(string))
+			return grpcClient.Amalgamate(ctx, req)
+		} else {
+			return nil, fmt.Errorf("no grpc client for %s", leader)
+		}
+	} else {
+		callbackChannelId := node.makeCallbackChannel()
+		err := node.db.Lock(ctx, req.AccountIdFrom)
+		defer node.db.Unlock(req.AccountIdFrom)
+		if err != nil {
+			return nil, err
+		}
+		err = node.db.Lock(ctx, req.AccountIdTo)
+		defer node.db.Unlock(req.AccountIdTo)
+		if err != nil {
+			return nil, err
+		}
+		balance, err := node.db.GetBalance(req.AccountIdFrom, db.SavingsAccount)
+		if err != nil {
+			return nil, err
+		}
+
+		node.logBufferChan <- &rcppb.LogEntry{
+			LogType: "bank",
+			Transaction1: &rcppb.Transaction{
+				AccountId:   req.AccountIdFrom,
+				Amount:      -1 * balance,
+				AccountType: string(db.SavingsAccount),
+			},
+			Transaction2: &rcppb.Transaction{
+				AccountId:   req.AccountIdTo,
+				Amount:      balance,
+				AccountType: string(db.CheckingAccount),
+			},
+			CallbackChannelId: callbackChannelId,
+		}
+
+		callbackChannelRaw, ok := node.callbackChannelMap.Load(callbackChannelId)
+		if !ok {
+			log.Printf("BUG: no callback channel")
+			return nil, errors.New("no callback channel")
+		}
+
+		callbackChannel := callbackChannelRaw.(chan struct{})
+
+		select {
+		case <-callbackChannel:
+			log.Println("Got callback")
+			return &wrapperspb.BoolValue{Value: true}, nil
+		case <-time.After(1 * time.Second):
+			return nil, errors.New("timed out")
+		}
+	}
 }

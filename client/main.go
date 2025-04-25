@@ -54,6 +54,7 @@ func displayMenu() {
 	fmt.Println("6. Set Delay")
 	fmt.Println("7. Get Balance")
 	fmt.Println("8. Deposit Checking")
+	fmt.Println("9. Write Check")
 	fmt.Println("0. Exit")
 }
 
@@ -345,6 +346,42 @@ func depositChecking(grpcClientMap map[string]rcppb.RCPClient) {
 	log.Printf("Response: %t", resp.Value)
 }
 
+func writeCheck(grpcClientMap map[string]rcppb.RCPClient) {
+	reader := bufio.NewReader(os.Stdin)
+
+	// Ask for Server ID
+	fmt.Print("Enter Server ID (e.g., S1, S2, S3): ")
+	serverID, _ := reader.ReadString('\n')
+	serverID = strings.TrimSpace(serverID)
+
+	// Ask for Key
+	fmt.Print("Enter Account ID: ")
+	accountID, _ := reader.ReadString('\n')
+	accountID = strings.TrimSpace(accountID)
+
+	fmt.Print("Enter Amount: ")
+	amount, _ := reader.ReadString('\n')
+	amountInt, err := strconv.ParseInt(strings.TrimSpace(amount), 10, 64)
+	if err != nil {
+		log.Printf("Error converting amount to int: %v", err)
+		return
+	}
+
+	grpcClient, exists := grpcClientMap[serverID]
+	if !exists {
+		fmt.Println("Invalid Server ID!")
+		return
+	}
+
+	resp, err := grpcClient.WriteCheck(context.Background(), &rcppb.WriteCheckRequest{AccountId: accountID, Amount: amountInt})
+	if err != nil {
+		log.Printf("Error response: %v", err)
+		return
+	}
+
+	log.Printf("Response: %t", resp.Value)
+}
+
 
 func main() {
 	config, err := LoadConfig("../nodes.json")
@@ -357,6 +394,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to establish connections to nodes: ", err)
 	}
+	readAndSend("ops.json", grpcClientMap)
 	for {
 		displayMenu()
 		fmt.Print("Enter choice: ")
@@ -380,6 +418,8 @@ func main() {
 			getBalance(grpcClientMap)
 		case 8:
 			depositChecking(grpcClientMap)
+		case 9:
+			writeCheck(grpcClientMap)
 		case 0:
 			fmt.Println("Exiting...")
 			return

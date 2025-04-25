@@ -24,6 +24,9 @@ func (node *Node) executor() {
 					go node.removeFromRecoverySet(logEntry.NodeId)
 				} else if logEntry.LogType == "bank" {
 					node.db.ModifyBalance(logEntry.Transaction1.AccountId, db.AccountType(logEntry.Transaction1.AccountType), logEntry.Transaction1.Amount)
+					if logEntry.Transaction2 != nil {
+						node.db.ModifyBalance(logEntry.Transaction2.AccountId, db.AccountType(logEntry.Transaction2.AccountType), logEntry.Transaction2.Amount)
+					}
 				}
 				node.execIndex += 1
 			}

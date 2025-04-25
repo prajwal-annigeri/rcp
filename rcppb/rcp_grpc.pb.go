@@ -32,6 +32,7 @@ const (
 	RCP_WriteCheck_FullMethodName      = "/rcppb.RCP/WriteCheck"
 	RCP_GetBalance_FullMethodName      = "/rcppb.RCP/GetBalance"
 	RCP_Amalgamate_FullMethodName      = "/rcppb.RCP/Amalgamate"
+	RCP_TransactSavings_FullMethodName = "/rcppb.RCP/TransactSavings"
 )
 
 // RCPClient is the client API for RCP service.
@@ -50,6 +51,7 @@ type RCPClient interface {
 	WriteCheck(ctx context.Context, in *WriteCheckRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
 	GetBalance(ctx context.Context, in *GetBalanceRequest, opts ...grpc.CallOption) (*GetBalanceResponse, error)
 	Amalgamate(ctx context.Context, in *AmalgamateRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
+	TransactSavings(ctx context.Context, in *TransactSavingsRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
 }
 
 type rCPClient struct {
@@ -180,6 +182,16 @@ func (c *rCPClient) Amalgamate(ctx context.Context, in *AmalgamateRequest, opts 
 	return out, nil
 }
 
+func (c *rCPClient) TransactSavings(ctx context.Context, in *TransactSavingsRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(wrapperspb.BoolValue)
+	err := c.cc.Invoke(ctx, RCP_TransactSavings_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RCPServer is the server API for RCP service.
 // All implementations must embed UnimplementedRCPServer
 // for forward compatibility.
@@ -196,6 +208,7 @@ type RCPServer interface {
 	WriteCheck(context.Context, *WriteCheckRequest) (*wrapperspb.BoolValue, error)
 	GetBalance(context.Context, *GetBalanceRequest) (*GetBalanceResponse, error)
 	Amalgamate(context.Context, *AmalgamateRequest) (*wrapperspb.BoolValue, error)
+	TransactSavings(context.Context, *TransactSavingsRequest) (*wrapperspb.BoolValue, error)
 	mustEmbedUnimplementedRCPServer()
 }
 
@@ -241,6 +254,9 @@ func (UnimplementedRCPServer) GetBalance(context.Context, *GetBalanceRequest) (*
 }
 func (UnimplementedRCPServer) Amalgamate(context.Context, *AmalgamateRequest) (*wrapperspb.BoolValue, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Amalgamate not implemented")
+}
+func (UnimplementedRCPServer) TransactSavings(context.Context, *TransactSavingsRequest) (*wrapperspb.BoolValue, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method TransactSavings not implemented")
 }
 func (UnimplementedRCPServer) mustEmbedUnimplementedRCPServer() {}
 func (UnimplementedRCPServer) testEmbeddedByValue()             {}
@@ -479,6 +495,24 @@ func _RCP_Amalgamate_Handler(srv interface{}, ctx context.Context, dec func(inte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RCP_TransactSavings_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TransactSavingsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RCPServer).TransactSavings(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RCP_TransactSavings_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RCPServer).TransactSavings(ctx, req.(*TransactSavingsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // RCP_ServiceDesc is the grpc.ServiceDesc for RCP service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -533,6 +567,10 @@ var RCP_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Amalgamate",
 			Handler:    _RCP_Amalgamate_Handler,
+		},
+		{
+			MethodName: "TransactSavings",
+			Handler:    _RCP_TransactSavings_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

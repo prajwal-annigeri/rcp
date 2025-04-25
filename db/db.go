@@ -8,17 +8,18 @@ import (
 )
 
 var (
-	logsBucket     = []byte("logs")
-	kvBucket       = []byte("store")
-	savingsBucket  = []byte("savings")
-	checkingBucket = []byte("checking")
-	locksBucket    = []byte("locks")
+	logsBucket      = []byte("logs")
+	kvBucket        = []byte("store")
+	savingsBucket   = []byte("savings")
+	checkingBucket  = []byte("checking")
+	locksBucket     = []byte("locks")
+	pendingSavings  = []byte("pending_savings")
+	pendingChecking = []byte("pending_checking")
 )
 
 type Database struct {
 	db *bolt.DB
 }
-
 
 func InitDatabase(dbPath string) (db *Database, closeFunc func() error, err error) {
 	boltDB, err := bolt.Open(dbPath, 0600, nil)
@@ -50,6 +51,8 @@ func (d *Database) createBuckets() error {
 			savingsBucket,
 			checkingBucket,
 			locksBucket,
+			pendingSavings,
+			pendingChecking,
 		}
 
 		for _, bucketName := range bucketsToCreate {
@@ -62,7 +65,7 @@ func (d *Database) createBuckets() error {
 }
 
 func (d *Database) initializeAccounts() error {
-	zeroBalanceBytes := []byte("0")
+	zeroBalanceBytes := []byte("100")
 
 	return d.db.Update(func(tx *bolt.Tx) error {
 		checkingB := tx.Bucket(checkingBucket)
@@ -74,6 +77,16 @@ func (d *Database) initializeAccounts() error {
 			return fmt.Errorf("savings bucket not found during init")
 		}
 
+		pendingSavingsBkt := tx.Bucket(pendingSavings)
+		if pendingSavingsBkt == nil {
+			return fmt.Errorf("pending savings bucket not found during init")
+		}
+
+		pendingCheckingBkt := tx.Bucket(pendingChecking)
+		if pendingCheckingBkt == nil {
+			return fmt.Errorf("pending checking bucket not found during init")
+		}
+
 		for i := int64(1); i <= 100; i++ {
 			keyBytes := []byte(strconv.FormatInt(i, 10))
 			if err := checkingB.Put(keyBytes, zeroBalanceBytes); err != nil {
@@ -81,6 +94,13 @@ func (d *Database) initializeAccounts() error {
 			}
 			if err := savingsB.Put(keyBytes, zeroBalanceBytes); err != nil {
 				return fmt.Errorf("failed to set savings balance for account %d: %w", i, err)
+			}
+			if err := pendingSavingsBkt.Put(keyBytes, zeroBalanceBytes); err != nil {
+				return fmt.Errorf("failed to set pending savings balance for account %d: %w", i, err)
+			}
+
+			if err := pendingCheckingBkt.Put(keyBytes, zeroBalanceBytes); err != nil {
+				return fmt.Errorf("failed to set pending checking balance for account %d: %w", i, err)
 			}
 		}
 		return nil

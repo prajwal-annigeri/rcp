@@ -69,8 +69,9 @@ message DepositCheckingRequest {
 }
 
 message SendPaymentRequest {
-    string accountId = 1;
-    int64 amount = 2;
+    string accountIdFrom = 1;
+    string accountIdTo = 2;
+    int64 amount = 3;
 }
 
 message WriteCheckRequest {
@@ -101,6 +102,11 @@ message DelayRequest {
     int64 delay = 2;
 }
 
+message TransactSavingsRequest {
+    string accountId = 1;
+    int64 amount = 2;
+}
+
 service RCP {
     rpc AppendEntries(AppendEntriesReq) returns (AppendEntriesResponse) {}
     rpc RequestVote (RequestVoteReq) returns (RequestVoteResponse) {}
@@ -114,4 +120,5 @@ service RCP {
     rpc WriteCheck(WriteCheckRequest) returns (google.protobuf.BoolValue) {}
     rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse) {}
     rpc Amalgamate(AmalgamateRequest) returns (google.protobuf.BoolValue) {}
+    rpc TransactSavings(TransactSavingsRequest) returns (google.protobuf.BoolValue) {}
 }
