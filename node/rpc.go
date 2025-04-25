@@ -29,19 +29,6 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 
 	begin := time.Now()
 
-	node.mutex.Lock()
-	defer node.mutex.Unlock()
-	// node.reachableSetLock.RLock()
-	// _, reachable := node.reachableNodes[appendEntryReq.LeaderId]
-	// node.reachableSetLock.RUnlock()
-	// if !reachable {
-	// 	log.Printf("Received AppendEntries: %s Term: %d I'm not reachable", appendEntryReq.LeaderId, appendEntryReq.Term)
-	// 	return &rcppb.AppendEntriesResponse{
-	// 		Term:    node.currentTerm,
-	// 		Success: false,
-	// 	}, status.Error(codes.Unavailable, "not reachable")
-	// }
-
 	if appendEntryReq.Term < node.currentTerm {
 		log.Printf("Denying append because my term %d is > %d\n", node.currentTerm, appendEntryReq.Term)
 		return &rcppb.AppendEntriesResponse{
@@ -54,6 +41,9 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 		node.isLeader = false
 		node.currentTerm = appendEntryReq.Term
 	}
+
+	node.mutex.Lock()
+	defer node.mutex.Unlock()
 
 	if appendEntryReq.PrevLogIndex >= 0 {
 		prevLogTerm := int64(-1)
@@ -124,22 +114,6 @@ func (node *Node) insertLogs(appendEntryReq *rcppb.AppendEntriesReq) error {
 	return nil
 }
 
-// func (node *Node) insertLogAtIndex(index int64, entry *rcppb.LogEntry) error {
-// 	existingLog, err := node.db.GetLogAtIndex(index)
-// 	if err == nil {
-// 		if existingLog.LogType == "failure" {
-// 			node.removeFromFailureSet()
-// 		} else if existingLog.LogType == "recovery" {
-// 			node.removeFromRecoveryWaitSet()
-// 		}
-// 	}
-// 	err = node.db.PutLogAtIndex(index, entry)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	return nil
-// }
-
 func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.RequestVoteReq) (*rcppb.RequestVoteResponse, error) {
 	if !node.Live {
 		log.Printf("Received RequestVote: %s Term: %d I'm not alive", requestVoteReq.CandidateId, requestVoteReq.Term)
@@ -151,26 +125,19 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 	// begin := time.Now()
 	// time.Sleep(time.Duration(requestVoteReq.Delay) * time.Millisecond)
 	// log.Printf("Slept for %v", time.Since(begin))
-	node.mutex.Lock()
-	defer node.mutex.Unlock()
-	node.reachableSetLock.RLock()
-	_, reachable := node.reachableNodes[requestVoteReq.CandidateId]
-	node.reachableSetLock.RUnlock()
+	
+	// node.reachableSetLock.RLock()
+	// _, reachable := node.reachableNodes[requestVoteReq.CandidateId]
+	// node.reachableSetLock.RUnlock()
 
-	if !reachable {
-		log.Printf("Received RequestVote: %s Term: %d I'm not reachable", requestVoteReq.CandidateId, requestVoteReq.Term)
-		return &rcppb.RequestVoteResponse{
-			Term:        node.currentTerm,
-			VoteGranted: false,
-		}, status.Error(codes.Unavailable, "not reachable")
-	}
-	log.Printf("Received RequestVote from %s: Term %d", requestVoteReq.CandidateId, requestVoteReq.Term)
-
-	// // If candidate's term is higher, update currentTerm and clear votedFor
-	// if requestVoteReq.Term > node.currentTerm {
-	// 	node.currentTerm = requestVoteReq.Term
-	// 	node.votedFor.Store(requestVoteReq.Term, "")
+	// if !reachable {
+	// 	log.Printf("Received RequestVote: %s Term: %d I'm not reachable", requestVoteReq.CandidateId, requestVoteReq.Term)
+	// 	return &rcppb.RequestVoteResponse{
+	// 		Term:        node.currentTerm,
+	// 		VoteGranted: false,
+	// 	}, status.Error(codes.Unavailable, "not reachable")
 	// }
+	log.Printf("Received RequestVote from %s: Term %d", requestVoteReq.CandidateId, requestVoteReq.Term)
 
 	if requestVoteReq.Term < node.currentTerm {
 		log.Printf("Denying vote to %s as my term is greater", requestVoteReq.CandidateId)
@@ -187,6 +154,9 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 			VoteGranted: false,
 		}, nil
 	}
+
+	node.mutex.Lock()
+	defer node.mutex.Unlock()
 
 	votedFor, ok := node.votedFor.Load(requestVoteReq.Term)
 	if !ok || votedFor.(string) == requestVoteReq.CandidateId || votedFor.(string) == "" {
@@ -410,23 +380,17 @@ func (node *Node) WriteCheck(ctx context.Context, req *rcppb.WriteCheckRequest) 
 			return nil, fmt.Errorf("insufficient balance: %d", balance)
 		}
 
-		node.logBufferChan <- &rcppb.LogEntry{
-			LogType: "bank",
-			Transaction1: &rcppb.Transaction{
-				AccountId:   req.AccountId,
-				Amount:      -1 * req.Amount,
-				AccountType: string(db.CheckingAccount),
-			},
-			CallbackChannelId: callbackChannelId,
-		}
-
-		// callbackChannelRaw, ok := node.callbackChannelMap.Load(callbackChannelId)
-		// if !ok {
-		// 	log.Printf("BUG: no callback channel")
-		// 	return nil, errors.New("no callback channel")
-		// }
-
-		// callbackChannel := callbackChannelRaw.(chan struct{})
+		go func() {
+			node.logBufferChan <- &rcppb.LogEntry{
+				LogType: "bank",
+				Transaction1: &rcppb.Transaction{
+					AccountId:   req.AccountId,
+					Amount:      -1 * req.Amount,
+					AccountType: string(db.CheckingAccount),
+				},
+				CallbackChannelId: callbackChannelId,
+			}
+		}()
 
 		select {
 		case <-callbackChannel:
@@ -474,28 +438,22 @@ func (node *Node) SendPayment(ctx context.Context, req *rcppb.SendPaymentRequest
 			return nil, fmt.Errorf("insufficient balance: %d", balance)
 		}
 
-		node.logBufferChan <- &rcppb.LogEntry{
-			LogType: "bank",
-			Transaction1: &rcppb.Transaction{
-				AccountId:   req.AccountIdFrom,
-				Amount:      -1 * req.Amount,
-				AccountType: string(db.CheckingAccount),
-			},
-			Transaction2: &rcppb.Transaction{
-				AccountId:   req.AccountIdTo,
-				Amount:      req.Amount,
-				AccountType: string(db.CheckingAccount),
-			},
-			CallbackChannelId: callbackChannelId,
-		}
-
-		// callbackChannelRaw, ok := node.callbackChannelMap.Load(callbackChannelId)
-		// if !ok {
-		// 	log.Printf("BUG: no callback channel")
-		// 	return nil, errors.New("no callback channel")
-		// }
-
-		// callbackChannel := callbackChannelRaw.(chan struct{})
+		go func() {
+			node.logBufferChan <- &rcppb.LogEntry{
+				LogType: "bank",
+				Transaction1: &rcppb.Transaction{
+					AccountId:   req.AccountIdFrom,
+					Amount:      -1 * req.Amount,
+					AccountType: string(db.CheckingAccount),
+				},
+				Transaction2: &rcppb.Transaction{
+					AccountId:   req.AccountIdTo,
+					Amount:      req.Amount,
+					AccountType: string(db.CheckingAccount),
+				},
+				CallbackChannelId: callbackChannelId,
+			}
+		}()
 
 		select {
 		case <-callbackChannel:
@@ -539,23 +497,17 @@ func (node *Node) TransactSavings(ctx context.Context, req *rcppb.TransactSaving
 		}
 
 		callbackChannelId, callbackChannel := node.makeCallbackChannel()
-		node.logBufferChan <- &rcppb.LogEntry{
-			LogType: "bank",
-			Transaction1: &rcppb.Transaction{
-				AccountId:   req.AccountId,
-				Amount:      req.Amount,
-				AccountType: string(db.SavingsAccount),
-			},
-			CallbackChannelId: callbackChannelId,
-		}
-
-		// callbackChannelRaw, ok := node.callbackChannelMap.Load(callbackChannelId)
-		// if !ok {
-		// 	log.Printf("BUG: no callback channel")
-		// 	return nil, errors.New("no callback channel")
-		// }
-
-		// callbackChannel := callbackChannelRaw.(chan struct{})
+		go func() {
+			node.logBufferChan <- &rcppb.LogEntry{
+				LogType: "bank",
+				Transaction1: &rcppb.Transaction{
+					AccountId:   req.AccountId,
+					Amount:      req.Amount,
+					AccountType: string(db.SavingsAccount),
+				},
+				CallbackChannelId: callbackChannelId,
+			}
+		}()
 
 		select {
 		case <-callbackChannel:
@@ -598,28 +550,22 @@ func (node *Node) Amalgamate(ctx context.Context, req *rcppb.AmalgamateRequest) 
 			return nil, err
 		}
 
-		node.logBufferChan <- &rcppb.LogEntry{
-			LogType: "bank",
-			Transaction1: &rcppb.Transaction{
-				AccountId:   req.AccountIdFrom,
-				Amount:      -1 * balance,
-				AccountType: string(db.SavingsAccount),
-			},
-			Transaction2: &rcppb.Transaction{
-				AccountId:   req.AccountIdTo,
-				Amount:      balance,
-				AccountType: string(db.CheckingAccount),
-			},
-			CallbackChannelId: callbackChannelId,
-		}
-
-		// callbackChannelRaw, ok := node.callbackChannelMap.Load(callbackChannelId)
-		// if !ok {
-		// 	log.Printf("BUG: no callback channel")
-		// 	return nil, errors.New("no callback channel")
-		// }
-
-		// callbackChannel := callbackChannelRaw.(chan struct{})
+		go func() {
+			node.logBufferChan <- &rcppb.LogEntry{
+				LogType: "bank",
+				Transaction1: &rcppb.Transaction{
+					AccountId:   req.AccountIdFrom,
+					Amount:      -1 * balance,
+					AccountType: string(db.SavingsAccount),
+				},
+				Transaction2: &rcppb.Transaction{
+					AccountId:   req.AccountIdTo,
+					Amount:      balance,
+					AccountType: string(db.CheckingAccount),
+				},
+				CallbackChannelId: callbackChannelId,
+			}
+		}()
 
 		select {
 		case <-callbackChannel:
