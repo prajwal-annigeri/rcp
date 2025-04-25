@@ -129,8 +129,9 @@ func (node *Node) removeFromRecoverySet(nodeId string) {
 	delete(node.recoveryLogWaitingSet, nodeId)
 }
 
-func (node *Node) makeCallbackChannel() string {
+func (node *Node) makeCallbackChannel() (string, chan struct{}) {
 	id := uuid.New().String()
-	node.callbackChannelMap.Store(id, make(chan struct{}))
-	return id
+	callbackChannel := make(chan struct{})
+	node.callbackChannelMap.Store(id, callbackChannel)
+	return id, callbackChannel
 }

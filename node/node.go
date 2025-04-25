@@ -215,9 +215,15 @@ func (node *Node) requestVotes() {
 	votesChan := make(chan *rcppb.RequestVoteResponse, len(node.ClientMap))
 
 	// send RequestVote to every other node
-	for nodeId, client := range node.ClientMap {
+	node.reachableSetLock.RLock()
+	for nodeId := range node.reachableNodes {
+		client, ok := node.ClientMap[nodeId]
+		if !ok {
+			continue
+		}
 		go node.sendRequestVote(client, term, votesChan, nodeId)
 	}
+	node.reachableSetLock.RUnlock()
 
 	voteCount := int64(1) // initialized to 1 because already voted for self
 

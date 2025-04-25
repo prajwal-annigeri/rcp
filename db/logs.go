@@ -35,7 +35,6 @@ func (d *Database) GetLogAtIndex(index int64) (*rcppb.LogEntry, error) {
 	}
 
 	// log.Printf("Log at index %d: %v\n", index, &logEntry)
-
 	return &logEntry, nil
 }
 

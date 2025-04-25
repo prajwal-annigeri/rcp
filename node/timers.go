@@ -93,9 +93,15 @@ func (node *Node) sendHeartbeats() {
 			responseChan := make(chan *rcppb.AppendEntriesResponse)
 
 			// Send AppendEntries to all other nodes
-			for nodeId, client := range node.ClientMap {
+			node.reachableSetLock.RLock()
+			for nodeId := range node.reachableNodes {
+				client, ok := node.ClientMap[nodeId]
+				if !ok {
+					continue
+				}
 				go node.sendHeartbeatTo(client, nodeId, responseChan)
 			}
+			node.reachableSetLock.RUnlock()
 
 
 			// successResponses, maxTerm := countSuccessfulAppendEntries(responseChan, 100*time.Millisecond)
@@ -135,7 +141,7 @@ func (node *Node) sendHeartbeats() {
 			// }
 
 		}
-		time.Sleep(100 * time.Millisecond)
+		// time.Sleep(10 * time.Millisecond)
 
 	}
 }

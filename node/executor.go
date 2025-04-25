@@ -31,7 +31,7 @@ func (node *Node) executor() {
 				node.execIndex += 1
 			}
 		}
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(2 * time.Millisecond)
 	}
 }
 
@@ -48,6 +48,7 @@ func (node *Node) callbacker() {
 }
 
 func (node *Node) doCallback(index int64) {
+	begin := time.Now()
 	logEntry, err := node.db.GetLogAtIndex(index)
 	if err == nil {
 		callbackChannelRaw, ok := node.callbackChannelMap.Load(logEntry.CallbackChannelId)
@@ -57,6 +58,7 @@ func (node *Node) doCallback(index int64) {
 		}
 		callbackChannel := callbackChannelRaw.(chan struct{})
 		callbackChannel <- struct{}{}
+		log.Printf("Time for callback: %v", time.Since(begin))
 		close(callbackChannel)
 	}
 }

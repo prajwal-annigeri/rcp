@@ -7,6 +7,7 @@ import (
 	"log"
 	"rcp/db"
 	"rcp/rcppb"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -26,22 +27,20 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 		}, status.Error(codes.Unavailable, "not alive")
 	}
 
-	// begin := time.Now()
-	// time.Sleep(time.Duration(appendEntryReq.Delay) * time.Millisecond)
-	// log.Printf("Slept for %v", time.Since(begin))
+	begin := time.Now()
 
 	node.mutex.Lock()
 	defer node.mutex.Unlock()
-	node.reachableSetLock.RLock()
-	_, reachable := node.reachableNodes[appendEntryReq.LeaderId]
-	node.reachableSetLock.RUnlock()
-	if !reachable {
-		log.Printf("Received AppendEntries: %s Term: %d I'm not reachable", appendEntryReq.LeaderId, appendEntryReq.Term)
-		return &rcppb.AppendEntriesResponse{
-			Term:    node.currentTerm,
-			Success: false,
-		}, status.Error(codes.Unavailable, "not reachable")
-	}
+	// node.reachableSetLock.RLock()
+	// _, reachable := node.reachableNodes[appendEntryReq.LeaderId]
+	// node.reachableSetLock.RUnlock()
+	// if !reachable {
+	// 	log.Printf("Received AppendEntries: %s Term: %d I'm not reachable", appendEntryReq.LeaderId, appendEntryReq.Term)
+	// 	return &rcppb.AppendEntriesResponse{
+	// 		Term:    node.currentTerm,
+	// 		Success: false,
+	// 	}, status.Error(codes.Unavailable, "not reachable")
+	// }
 
 	if appendEntryReq.Term < node.currentTerm {
 		log.Printf("Denying append because my term %d is > %d\n", node.currentTerm, appendEntryReq.Term)
@@ -84,6 +83,10 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 	if appendEntryReq.LeaderCommit > node.commitIndex {
 		node.commitIndex = min(appendEntryReq.LeaderCommit, node.lastIndex)
 	}
+	end := time.Since(begin)
+	if len(appendEntryReq.Entries) > 0 {
+		log.Printf("Time for appendEntries with %d entries: %v", len(appendEntryReq.Entries), end)
+	}
 
 	return &rcppb.AppendEntriesResponse{
 		Term:    node.currentTerm,
@@ -97,7 +100,6 @@ func (node *Node) insertLogs(appendEntryReq *rcppb.AppendEntriesReq) error {
 	}
 
 	log.Printf("Inserting logs: %v\n", appendEntryReq.Entries)
-
 	currIndex := appendEntryReq.PrevLogIndex + 1
 	lastEntryTerm := appendEntryReq.Term
 	// var err error
@@ -119,13 +121,6 @@ func (node *Node) insertLogs(appendEntryReq *rcppb.AppendEntriesReq) error {
 	}
 
 	node.lastTerm = lastEntryTerm
-	// return nil
-	// err := node.db.InsertLogs(appendEntryReq)
-	// if err != nil {
-	// 	return err
-	// }
-	// node.lastIndex = appendEntryReq.PrevLogIndex + int64(len(appendEntryReq.Entries))
-	// node.lastTerm = appendEntryReq.Term
 	return nil
 }
 
@@ -232,25 +227,30 @@ func (node *Node) Store(ctx context.Context, KV *rcppb.KV) (*wrapperspb.BoolValu
 			return grpcClient.Store(context.Background(), &rcppb.KV{Key: KV.Key, Value: KV.Value})
 		}
 	} else {
-		callbackChannelId := node.makeCallbackChannel()
-		node.logBufferChan <- &rcppb.LogEntry{
-			LogType:           "store",
-			Key:               KV.Key,
-			Value:             KV.Value,
-			CallbackChannelId: callbackChannelId,
-		}
+		callbackChannelId, callbackChannel := node.makeCallbackChannel()
+		defer node.callbackChannelMap.Delete(callbackChannelId)
+		begin := time.Now()
+		go func() {
+			node.logBufferChan <- &rcppb.LogEntry{
+				LogType:           "store",
+				Key:               KV.Key,
+				Value:             KV.Value,
+				CallbackChannelId: callbackChannelId,
+			}
+		}()
 
-		callbackChannelRaw, ok := node.callbackChannelMap.Load(callbackChannelId)
-		if !ok {
-			log.Printf("BUG: no callback channel")
-			return nil, errors.New("no callback channel")
-		}
+		// callbackChannelRaw, ok := node.callbackChannelMap.Load(callbackChannelId)
+		// if !ok {
+		// 	log.Printf("BUG: no callback channel")
+		// 	return nil, errors.New("no callback channel")
+		// }
 
-		callbackChannel := callbackChannelRaw.(chan struct{})
-
+		// callbackChannel := callbackChannelRaw.(chan struct{})
+		log.Printf("Time before select: %v", time.Since(begin))
 		select {
 		case <-callbackChannel:
 			log.Println("Got callback")
+			log.Printf("Time: %v", time.Since(begin))
 			return &wrapperspb.BoolValue{Value: true}, nil
 		case <-time.After(1 * time.Second):
 			return nil, errors.New("timed out")
@@ -305,18 +305,34 @@ func (node *Node) Delay(ctx context.Context, req *rcppb.DelayRequest) (*wrappers
 }
 
 func (node *Node) GetBalance(ctx context.Context, req *rcppb.GetBalanceRequest) (*rcppb.GetBalanceResponse, error) {
-	err := node.db.Lock(context.Background(), req.AccountId)
-	defer node.db.Unlock(req.AccountId)
-	if err != nil {
-		return nil, err
+	// err := node.db.Lock(context.Background(), req.AccountId)
+	// defer node.db.Unlock(req.AccountId)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	var checking, savings int64
+	var err1, err2 error
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		checking, err1 = node.db.GetBalance(req.AccountId, db.CheckingAccount)
+	}()
+
+	go func() {
+		defer wg.Done()
+		savings, err2 = node.db.GetBalance(req.AccountId, db.SavingsAccount)
+	}()
+
+	wg.Wait()
+
+	if err1 != nil {
+		return nil, err1
 	}
-	checking, err := node.db.GetBalance(req.AccountId, db.CheckingAccount)
-	if err != nil {
-		return nil, err
-	}
-	savings, err := node.db.GetBalance(req.AccountId, db.SavingsAccount)
-	if err != nil {
-		return nil, err
+	if err2 != nil {
+		return nil, err2
 	}
 
 	return &rcppb.GetBalanceResponse{CheckingBalance: checking, SavingsBalance: savings}, nil
@@ -337,28 +353,24 @@ func (node *Node) DepositChecking(ctx context.Context, req *rcppb.DepositCheckin
 			return nil, fmt.Errorf("no grpc client for %s", leader)
 		}
 	} else {
-		callbackChannelId := node.makeCallbackChannel()
-		node.logBufferChan <- &rcppb.LogEntry{
-			LogType: "bank",
-			Transaction1: &rcppb.Transaction{
-				AccountId:   req.AccountId,
-				Amount:      req.Amount,
-				AccountType: string(db.CheckingAccount),
-			},
-			CallbackChannelId: callbackChannelId,
-		}
-
-		callbackChannelRaw, ok := node.callbackChannelMap.Load(callbackChannelId)
-		if !ok {
-			log.Printf("BUG: no callback channel")
-			return nil, errors.New("no callback channel")
-		}
-
-		callbackChannel := callbackChannelRaw.(chan struct{})
+		callbackChannelId, callbackChannel := node.makeCallbackChannel()
+		begin := time.Now()
+		go func() {
+			node.logBufferChan <- &rcppb.LogEntry{
+				LogType: "bank",
+				Transaction1: &rcppb.Transaction{
+					AccountId:   req.AccountId,
+					Amount:      req.Amount,
+					AccountType: string(db.CheckingAccount),
+				},
+				CallbackChannelId: callbackChannelId,
+			}
+		}()
 
 		select {
 		case <-callbackChannel:
-			log.Println("Got callback")
+			log.Printf("Got callback: %v", time.Since(begin))
+
 			return &wrapperspb.BoolValue{Value: true}, nil
 		case <-time.After(1 * time.Second):
 			return nil, errors.New("timed out")
@@ -383,7 +395,7 @@ func (node *Node) WriteCheck(ctx context.Context, req *rcppb.WriteCheckRequest) 
 			return nil, fmt.Errorf("no grpc client for %s", leader)
 		}
 	} else {
-		callbackChannelId := node.makeCallbackChannel()
+		callbackChannelId, callbackChannel := node.makeCallbackChannel()
 		err := node.db.Lock(ctx, req.AccountId)
 		defer node.db.Unlock(req.AccountId)
 		if err != nil {
@@ -408,13 +420,13 @@ func (node *Node) WriteCheck(ctx context.Context, req *rcppb.WriteCheckRequest) 
 			CallbackChannelId: callbackChannelId,
 		}
 
-		callbackChannelRaw, ok := node.callbackChannelMap.Load(callbackChannelId)
-		if !ok {
-			log.Printf("BUG: no callback channel")
-			return nil, errors.New("no callback channel")
-		}
+		// callbackChannelRaw, ok := node.callbackChannelMap.Load(callbackChannelId)
+		// if !ok {
+		// 	log.Printf("BUG: no callback channel")
+		// 	return nil, errors.New("no callback channel")
+		// }
 
-		callbackChannel := callbackChannelRaw.(chan struct{})
+		// callbackChannel := callbackChannelRaw.(chan struct{})
 
 		select {
 		case <-callbackChannel:
@@ -442,7 +454,7 @@ func (node *Node) SendPayment(ctx context.Context, req *rcppb.SendPaymentRequest
 			return nil, fmt.Errorf("no grpc client for %s", leader)
 		}
 	} else {
-		callbackChannelId := node.makeCallbackChannel()
+		callbackChannelId, callbackChannel := node.makeCallbackChannel()
 		err := node.db.Lock(ctx, req.AccountIdFrom)
 		defer node.db.Unlock(req.AccountIdFrom)
 		if err != nil {
@@ -477,13 +489,13 @@ func (node *Node) SendPayment(ctx context.Context, req *rcppb.SendPaymentRequest
 			CallbackChannelId: callbackChannelId,
 		}
 
-		callbackChannelRaw, ok := node.callbackChannelMap.Load(callbackChannelId)
-		if !ok {
-			log.Printf("BUG: no callback channel")
-			return nil, errors.New("no callback channel")
-		}
+		// callbackChannelRaw, ok := node.callbackChannelMap.Load(callbackChannelId)
+		// if !ok {
+		// 	log.Printf("BUG: no callback channel")
+		// 	return nil, errors.New("no callback channel")
+		// }
 
-		callbackChannel := callbackChannelRaw.(chan struct{})
+		// callbackChannel := callbackChannelRaw.(chan struct{})
 
 		select {
 		case <-callbackChannel:
@@ -526,7 +538,7 @@ func (node *Node) TransactSavings(ctx context.Context, req *rcppb.TransactSaving
 			return nil, fmt.Errorf("insufficient balance: %d", balance)
 		}
 
-		callbackChannelId := node.makeCallbackChannel()
+		callbackChannelId, callbackChannel := node.makeCallbackChannel()
 		node.logBufferChan <- &rcppb.LogEntry{
 			LogType: "bank",
 			Transaction1: &rcppb.Transaction{
@@ -536,14 +548,14 @@ func (node *Node) TransactSavings(ctx context.Context, req *rcppb.TransactSaving
 			},
 			CallbackChannelId: callbackChannelId,
 		}
-		
-		callbackChannelRaw, ok := node.callbackChannelMap.Load(callbackChannelId)
-		if !ok {
-			log.Printf("BUG: no callback channel")
-			return nil, errors.New("no callback channel")
-		}
 
-		callbackChannel := callbackChannelRaw.(chan struct{})
+		// callbackChannelRaw, ok := node.callbackChannelMap.Load(callbackChannelId)
+		// if !ok {
+		// 	log.Printf("BUG: no callback channel")
+		// 	return nil, errors.New("no callback channel")
+		// }
+
+		// callbackChannel := callbackChannelRaw.(chan struct{})
 
 		select {
 		case <-callbackChannel:
@@ -570,7 +582,7 @@ func (node *Node) Amalgamate(ctx context.Context, req *rcppb.AmalgamateRequest) 
 			return nil, fmt.Errorf("no grpc client for %s", leader)
 		}
 	} else {
-		callbackChannelId := node.makeCallbackChannel()
+		callbackChannelId, callbackChannel := node.makeCallbackChannel()
 		err := node.db.Lock(ctx, req.AccountIdFrom)
 		defer node.db.Unlock(req.AccountIdFrom)
 		if err != nil {
@@ -601,13 +613,13 @@ func (node *Node) Amalgamate(ctx context.Context, req *rcppb.AmalgamateRequest) 
 			CallbackChannelId: callbackChannelId,
 		}
 
-		callbackChannelRaw, ok := node.callbackChannelMap.Load(callbackChannelId)
-		if !ok {
-			log.Printf("BUG: no callback channel")
-			return nil, errors.New("no callback channel")
-		}
+		// callbackChannelRaw, ok := node.callbackChannelMap.Load(callbackChannelId)
+		// if !ok {
+		// 	log.Printf("BUG: no callback channel")
+		// 	return nil, errors.New("no callback channel")
+		// }
 
-		callbackChannel := callbackChannelRaw.(chan struct{})
+		// callbackChannel := callbackChannelRaw.(chan struct{})
 
 		select {
 		case <-callbackChannel:
