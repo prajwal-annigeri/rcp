@@ -23,31 +23,33 @@ type Node struct {
 	currentTerm int64
 
 	// TODO: persist votedFor on disk
-	votedFor        sync.Map
-	db              *db.Database
-	commitIndex     int64
-	execIndex       int64
-	lastApplied     int64
-	nextIndex       sync.Map
-	matchIndex      map[string]int
-	lastIndex       int64
-	lastTerm        int64
-	Id              string            `json:"id"`
-	Port            string            `json:"port"`
-	HttpPort        string            `json:"http_port"`
-	NodeMap         map[string]string `json:"nodeMap"`
-	ConnMap         map[string]*grpc.ClientConn
-	ClientMap       map[string]rcppb.RCPClient
-	Live            bool
-	DBCloseFunc     func() error
-	K               int
-	isLeader        bool
-	isCandidate     bool
-	electionTimer   *time.Timer
-	currAlive       int64
-	serverStatusMap sync.Map
-	logBufferChan   chan *rcppb.LogEntry // Read from HTTP request into this buffer
-	mutex           sync.Mutex
+	votedFor          sync.Map
+	db                *db.Database
+	commitIndex       int64
+	execIndex         int64
+	lastApplied       int64
+	nextIndex         sync.Map
+	matchIndex        map[string]int
+	lastIndex         int64
+	lastTerm          int64
+	Id                string            `json:"id"`
+	Port              string            `json:"port"`
+	HttpPort          string            `json:"http_port"`
+	NodeMap           map[string]string `json:"nodeMap"`
+	ConnMap           map[string]*grpc.ClientConn
+	ClientMap         map[string]rcppb.RCPClient
+	Live              bool
+	DBCloseFunc       func() error
+	K                 int
+	isLeader          bool
+	isCandidate       bool
+	electionTimer     *time.Timer
+	currAlive         int
+	serverStatusMap   sync.Map
+	logBufferChan     chan *rcppb.LogEntry // Read from HTTP request into this buffer
+	mutex             sync.Mutex
+	replicationQuorum int
+	protocol          string
 
 	/// The below hash sets are used to prevent duplicate failure/recovery logs from being inserted.
 	//
@@ -81,7 +83,7 @@ type ConfigFile struct {
 }
 
 // constructor
-func NewNode(thisNodeId string) (*Node, error) {
+func NewNode(thisNodeId, protocol string) (*Node, error) {
 	// reads config file
 	mapJson, err := os.Open("nodes.json")
 	if err != nil {
@@ -131,6 +133,18 @@ func NewNode(thisNodeId string) (*Node, error) {
 		reachableNodes:        make(map[string]struct{}),
 	}
 
+	if protocol == "rcp" {
+		newNode.replicationQuorum = config.K + 1
+		newNode.protocol = "rcp"
+	} else if protocol == "raft" {
+		newNode.replicationQuorum = int(len(nodes)/2) + 1
+		newNode.protocol = "raft"
+	} else {
+		log.Fatalf("Invalid protocol: %s", protocol)
+	}
+
+	log.Printf("Replication Quorum size: %d", newNode.replicationQuorum)
+
 	// go through all the nodes defined in config file and map them to their gRPC ports
 	for _, node := range nodes {
 		// if current node, then assign ports to node object
@@ -146,7 +160,7 @@ func NewNode(thisNodeId string) (*Node, error) {
 	}
 
 	// initialize current alive to number of nodes in the config file
-	newNode.currAlive = int64(len(newNode.NodeMap))
+	newNode.currAlive = len(newNode.NodeMap)
 	if newNode.NodeMap[thisNodeId] == "" {
 		log.Fatalf("No port specified for ID: %s in config JSON", thisNodeId)
 	}
@@ -203,6 +217,10 @@ func (node *Node) Start() {
 // request votes from other nodes on election timer expiry
 func (node *Node) requestVotes() {
 	log.Printf("Requesting votes\n")
+	electionQuorum := node.currAlive - node.K
+	if node.protocol == "raft" {
+		electionQuorum = (len(nodes) / 2) + 1
+	}
 	node.currentTerm += 1
 
 	// vote for self
@@ -225,7 +243,7 @@ func (node *Node) requestVotes() {
 	}
 	node.reachableSetLock.RUnlock()
 
-	voteCount := int64(1) // initialized to 1 because already voted for self
+	voteCount := 1 // initialized to 1 because already voted for self
 
 	// initialize timer to wait for votes
 	// TODO: refine timer duration
@@ -243,7 +261,7 @@ func (node *Node) requestVotes() {
 			}
 			if voteResp != nil && voteResp.VoteGranted {
 				voteCount += 1
-				if voteCount >= node.currAlive-int64(node.K) {
+				if voteCount >= electionQuorum {
 					node.isLeader = true
 					node.isCandidate = false
 					node.electionTimer.Stop()

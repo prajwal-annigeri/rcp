@@ -2,7 +2,11 @@ import json
 import subprocess
 import time
 import os
+import sys
 
+protocol = "rcp"
+if len(sys.argv) >=2:
+    protocol = sys.argv[1]
 # Read JSON file
 json_file = "nodes.json"
 
@@ -18,7 +22,7 @@ def run_server(server):
     except Exception as e:
         print(f"Failed to clear db: {e}")
     # Command to open a new macOS Terminal window and execute the Go run command
-    cmd = f'osascript -e \'tell application "Terminal" to do script "cd {cwd} && go run main.go --id {server["id"]} --logs"\''
+    cmd = f'osascript -e \'tell application "Terminal" to do script "cd {cwd} && go run main.go --id {server["id"]} --logs --protocol {protocol}"\''
     subprocess.run(cmd, shell=True)
 
 # Start each server in a new macOS terminal window

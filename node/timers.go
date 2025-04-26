@@ -123,7 +123,7 @@ func (node *Node) sendHeartbeats() {
 						break
 					}
 
-					if successResponses == node.K + 1 {
+					if successResponses == node.replicationQuorum {
 						node.commitIndex = node.lastIndex
 						log.Printf("Committed index %d", node.commitIndex)
 					}
@@ -141,7 +141,7 @@ func (node *Node) sendHeartbeats() {
 			// }
 
 		}
-		// time.Sleep(10 * time.Millisecond)
+		time.Sleep(5 * time.Millisecond)
 
 	}
 }

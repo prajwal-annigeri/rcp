@@ -2,17 +2,18 @@ package main
 
 import (
 	"flag"
+	"google.golang.org/grpc"
 	"io"
 	"log"
 	"net"
-	"rcp/rcppb"
 	"rcp/node"
-	"google.golang.org/grpc"
+	"rcp/rcppb"
 )
 
 var (
-	nodeId = flag.String("id", "", "Node ID")
-	logs   = flag.Bool("logs", false, "Logging")
+	nodeId   = flag.String("id", "", "Node ID")
+	logs     = flag.Bool("logs", false, "Logging")
+	protocol = flag.String("protocol", "rcp", "raft/rcp")
 )
 
 func main() {
@@ -26,7 +27,11 @@ func main() {
 		log.Fatalf("Node ID is required")
 	}
 
-	node, err := node.NewNode(*nodeId)
+	if *protocol != "rcp" && *protocol != "raft" {
+		log.Fatalf("protocol can either 'rcp' or 'raft'")
+	}
+
+	node, err := node.NewNode(*nodeId, *protocol)
 	if err != nil {
 		log.Fatalf("Error creating node: %v", err)
 	}
