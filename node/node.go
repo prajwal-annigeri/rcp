@@ -156,7 +156,7 @@ func NewNode(thisNodeId, protocol string) (*Node, error) {
 		newNode.serverStatusMap.Store(node.Id, true)
 		newNode.reachableNodes[node.Id] = struct{}{}
 		newNode.failedAppendEntries.Store(thisNodeId, 0)
-		newNode.delays.Store(node.Id, 0)
+		newNode.delays.Store(node.Id, int64(0))
 	}
 
 	// initialize current alive to number of nodes in the config file
@@ -174,7 +174,7 @@ func (node *Node) Start() {
 
 	// starts HTTP server used by clients to interact with server
 	// go node.startHttpServer()
-	time.Sleep(5 * time.Second)
+	time.Sleep(1 * time.Second)
 
 	// establish gRPC connections with ohter nodes
 	node.establishConns()
@@ -287,11 +287,11 @@ func (node *Node) initNextIndex() {
 func (node *Node) sendRequestVote(client rcppb.RCPClient, term int64, votesChan chan *rcppb.RequestVoteResponse, nodeId string) {
 	log.Printf("Sending RequestVote to %s\n", nodeId)
 	delayRaw, ok := node.delays.Load(nodeId)
-	var delay int
+	var delay int64
 	if !ok {
 		delay = 0
 	} else {
-		delay = delayRaw.(int)
+		delay = delayRaw.(int64)
 	}
 	resp, _ := client.RequestVote(context.Background(), &rcppb.RequestVoteReq{
 		Term:         term,

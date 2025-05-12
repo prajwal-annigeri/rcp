@@ -46,6 +46,7 @@ func LoadConfig(filename string) (*Config, error) {
 // displayMenu shows the user menu
 func displayMenu() {
 	fmt.Println("\nMenu:")
+	fmt.Println("0. Do operations from file")
 	fmt.Println("1. Send Store Request")
 	fmt.Println("2. Get Value")
 	fmt.Println("3. Kill server")
@@ -55,7 +56,8 @@ func displayMenu() {
 	fmt.Println("7. Get Balance")
 	fmt.Println("8. Deposit Checking")
 	fmt.Println("9. Write Check")
-	fmt.Println("0. Exit")
+	fmt.Println("10. Performance")
+	fmt.Println("-1. Exit")
 }
 
 // MapServerIDToHTTPPort creates a mapping of server IDs to HTTP ports
@@ -394,7 +396,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to establish connections to nodes: ", err)
 	}
-	readAndSend("ops.json", grpcClientMap)
+	
 	for {
 		displayMenu()
 		fmt.Print("Enter choice: ")
@@ -420,7 +422,11 @@ func main() {
 			depositChecking(grpcClientMap)
 		case 9:
 			writeCheck(grpcClientMap)
+		case 10:
+			printMetric()
 		case 0:
+			readAndSend("ops.json", grpcClientMap)
+		case -1:
 			fmt.Println("Exiting...")
 			return
 

@@ -42,8 +42,12 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 		node.currentTerm = appendEntryReq.Term
 	}
 
+	delay := time.After(time.Duration(appendEntryReq.Delay) * time.Millisecond)
+
 	node.mutex.Lock()
 	defer node.mutex.Unlock()
+
+	<-delay
 
 	if appendEntryReq.PrevLogIndex >= 0 {
 		prevLogTerm := int64(-1)
@@ -222,7 +226,7 @@ func (node *Node) Store(ctx context.Context, KV *rcppb.KV) (*wrapperspb.BoolValu
 			log.Println("Got callback")
 			log.Printf("Time: %v", time.Since(begin))
 			return &wrapperspb.BoolValue{Value: true}, nil
-		case <-time.After(1 * time.Second):
+		case <-time.After(2 * time.Second):
 			return nil, errors.New("timed out")
 		}
 	}
@@ -342,7 +346,7 @@ func (node *Node) DepositChecking(ctx context.Context, req *rcppb.DepositCheckin
 			log.Printf("Got callback: %v", time.Since(begin))
 
 			return &wrapperspb.BoolValue{Value: true}, nil
-		case <-time.After(1 * time.Second):
+		case <-time.After(2 * time.Second):
 			return nil, errors.New("timed out")
 		}
 	}
@@ -396,7 +400,7 @@ func (node *Node) WriteCheck(ctx context.Context, req *rcppb.WriteCheckRequest) 
 		case <-callbackChannel:
 			log.Println("Got callback")
 			return &wrapperspb.BoolValue{Value: true}, nil
-		case <-time.After(1 * time.Second):
+		case <-time.After(2 * time.Second):
 			return nil, errors.New("timed out")
 		}
 	}
@@ -459,7 +463,7 @@ func (node *Node) SendPayment(ctx context.Context, req *rcppb.SendPaymentRequest
 		case <-callbackChannel:
 			log.Println("Got callback")
 			return &wrapperspb.BoolValue{Value: true}, nil
-		case <-time.After(1 * time.Second):
+		case <-time.After(2 * time.Second):
 			return nil, errors.New("timed out")
 		}
 	}
@@ -480,6 +484,7 @@ func (node *Node) TransactSavings(ctx context.Context, req *rcppb.TransactSaving
 			return nil, fmt.Errorf("no grpc client for %s", leader)
 		}
 	} else {
+		now := time.Now()
 		err := node.db.Lock(ctx, req.AccountId)
 		defer node.db.Unlock(req.AccountId)
 		if err != nil {
@@ -495,7 +500,7 @@ func (node *Node) TransactSavings(ctx context.Context, req *rcppb.TransactSaving
 		if newBalance < 0 {
 			return nil, fmt.Errorf("insufficient balance: %d", balance)
 		}
-
+		log.Printf("Time before creating callback channel: %v", time.Since(now))
 		callbackChannelId, callbackChannel := node.makeCallbackChannel()
 		go func() {
 			node.logBufferChan <- &rcppb.LogEntry{
@@ -511,9 +516,9 @@ func (node *Node) TransactSavings(ctx context.Context, req *rcppb.TransactSaving
 
 		select {
 		case <-callbackChannel:
-			log.Println("Got callback")
+			log.Printf("Got callback: %v", time.Since(now))
 			return &wrapperspb.BoolValue{Value: true}, nil
-		case <-time.After(1 * time.Second):
+		case <-time.After(2 * time.Second):
 			return nil, errors.New("timed out")
 		}
 	}
@@ -571,7 +576,7 @@ func (node *Node) Amalgamate(ctx context.Context, req *rcppb.AmalgamateRequest) 
 		case <-callbackChannel:
 			log.Println("Got callback")
 			return &wrapperspb.BoolValue{Value: true}, nil
-		case <-time.After(1 * time.Second):
+		case <-time.After(2 * time.Second):
 			return nil, errors.New("timed out")
 		}
 	}

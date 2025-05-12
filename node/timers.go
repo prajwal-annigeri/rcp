@@ -51,6 +51,7 @@ func (node *Node) sendHeartbeats() {
 	for {
 		// Send AppendEntry only if live and is leader
 		if node.Live && node.isLeader {
+			now := time.Now()
 			doneReading := false
 			var logsToSend []*rcppb.LogEntry
 			for {
@@ -105,7 +106,9 @@ func (node *Node) sendHeartbeats() {
 
 
 			// successResponses, maxTerm := countSuccessfulAppendEntries(responseChan, 100*time.Millisecond)
-			waitTimer := time.After(1 * time.Second)
+			// waitTimer := time.After(1 * time.Second)
+			waitTimer := time.After(250 * time.Millisecond)
+			waitAfterCommit := time.After(10 * time.Second)
 			successResponses := 0
 			if selfSuccess {
 				successResponses = 1
@@ -125,10 +128,14 @@ func (node *Node) sendHeartbeats() {
 
 					if successResponses == node.replicationQuorum {
 						node.commitIndex = node.lastIndex
-						log.Printf("Committed index %d", node.commitIndex)
+						// log.Printf("Committed index %d", node.commitIndex)
+						log.Printf("waiter here: %v", time.Since(now))
+						waitAfterCommit = time.After(50 * time.Millisecond)
 					}
 				case <-waitTimer:
 					// log.Printf("Timer out")
+					isDone = true
+				case <-waitAfterCommit:
 					isDone = true
 				}
 			}
@@ -146,43 +153,46 @@ func (node *Node) sendHeartbeats() {
 	}
 }
 
-func (node *Node) constructAppendEntriesRequest(term int64, nodeId string) (*rcppb.AppendEntriesReq, error) {
+func (node *Node) constructAppendEntriesRequest(term int64, nodeId string) (*rcppb.AppendEntriesReq, int64, error) {
 	nextIndex, _ := node.nextIndex.Load(nodeId)
 	entries, err := node.db.GetLogsFromIndex(nextIndex.(int64))
 	prevLogTerm := int64(-1)
 	if nextIndex.(int64)-1 >= 0 {
 		prevLogEntry, err := node.db.GetLogAtIndex(nextIndex.(int64) - 1)
 		if err != nil {
-			log.Printf("error fetching prevLogEntry: %v", err)
-			return nil, err
+			log.Printf("error fetching prevLogEntry %d for %s: %v", nextIndex.(int64) - 1, nodeId, err)
+			return nil, -1, err
 		}
 		prevLogTerm = prevLogEntry.Term
 	}
 	if err != nil {
-		return nil, err
+		return nil, -1, err
 	}
-	nextLogIndex, _ := node.nextIndex.Load(nodeId)
+	// nextLogIndex, _ := node.nextIndex.Load(nodeId)
 	delayRaw, ok := node.delays.Load(nodeId)
-	var delay int
+	var delay int64
 	if !ok {
 		delay = 0
 	} else {
-		delay = delayRaw.(int)
+		delay = delayRaw.(int64)
+	}
+	if len(entries) > 0 {
+		log.Printf("Append entries req to %s (%d): %v", nodeId, nextIndex, entries)
 	}
 	return &rcppb.AppendEntriesReq{
 		Term:         term,
 		LeaderId:     node.Id,
-		PrevLogIndex: int64(nextLogIndex.(int64) - 1),
+		PrevLogIndex: int64(nextIndex.(int64) - 1),
 		LeaderCommit: node.commitIndex,
 		PrevLogTerm:  prevLogTerm,
 		Entries:      entries,
 		Delay:        int64(delay),
-	}, nil
+	}, nextIndex.(int64), nil
 }
 
 func (node *Node) sendHeartbeatTo(client rcppb.RCPClient, nodeId string, responsesChan chan *rcppb.AppendEntriesResponse ) {
 	// log.Printf("Sending heartbeat to %s\n", nodeId)
-	req, err := node.constructAppendEntriesRequest(node.currentTerm, nodeId)
+	req, currNextIndex, err := node.constructAppendEntriesRequest(node.currentTerm, nodeId)
 	if err != nil {
 		log.Printf("Error constructing AppendEntries Request: %v\n", err)
 		return
@@ -206,15 +216,19 @@ func (node *Node) sendHeartbeatTo(client rcppb.RCPClient, nodeId string, respons
 
 	go node.checkInsertRecoveryLog(nodeId)
 	if resp.Success {
-		currNextIndex, _ := node.nextIndex.Load(nodeId)
-		node.nextIndex.Store(nodeId, currNextIndex.(int64)+int64(len(req.Entries)))
+		
 		if len(req.Entries) > 0 {
-			
-			if status, _ := node.serverStatusMap.Load(nodeId); status.(bool) {
-				responsesChan <- resp
-				// node.increaseReplicationCount(req.PrevLogIndex + int64(len(req.Entries)))
-			}
+			// currNextIndex, _ := node.nextIndex.Load(nodeId)
+			node.nextIndex.Store(nodeId, currNextIndex+int64(len(req.Entries)))
+			// if status, _ := node.serverStatusMap.Load(nodeId); status.(bool) {
+			// 	responsesChan <- resp
+			// 	// node.increaseReplicationCount(req.PrevLogIndex + int64(len(req.Entries)))
+			// }
 
+		}
+		if status, _ := node.serverStatusMap.Load(nodeId); status.(bool) {
+			responsesChan <- resp
+			// node.increaseReplicationCount(req.PrevLogIndex + int64(len(req.Entries)))
 		}
 		// log.Printf("Successful append entries to %s\n", nodeId)
 	} else {
