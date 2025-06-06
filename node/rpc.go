@@ -17,7 +17,7 @@ import (
 
 func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.AppendEntriesReq) (*rcppb.AppendEntriesResponse, error) {
 	if len(appendEntryReq.Entries) > 0 {
-		log.Printf("Received AppendEntries from %s with %d entries. Term: %d\n", appendEntryReq.LeaderId, len(appendEntryReq.Entries), appendEntryReq.Term)
+		log.Printf("LOGX Received AppendEntries from %s with %d entries. Term: %d\n", appendEntryReq.LeaderId, len(appendEntryReq.Entries), appendEntryReq.Term)
 	}
 
 	if !node.Live {
@@ -42,6 +42,9 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 		node.currentTerm = appendEntryReq.Term
 	}
 
+	if appendEntryReq.Delay > 0 {
+		log.Printf("Delay %s to %s: %d", appendEntryReq.LeaderId, node.Id, appendEntryReq.Delay)
+	}
 	delay := time.After(time.Duration(appendEntryReq.Delay) * time.Millisecond)
 
 	node.mutex.Lock()
@@ -226,7 +229,8 @@ func (node *Node) Store(ctx context.Context, KV *rcppb.KV) (*wrapperspb.BoolValu
 			log.Println("Got callback")
 			log.Printf("Time: %v", time.Since(begin))
 			return &wrapperspb.BoolValue{Value: true}, nil
-		case <-time.After(2 * time.Second):
+		case <-time.After(20 * time.Second):
+			log.Printf("TIMED OUT Store")
 			return nil, errors.New("timed out")
 		}
 	}

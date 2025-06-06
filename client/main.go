@@ -10,6 +10,7 @@ import (
 	"rcp/rcppb"
 	"strconv"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
@@ -100,12 +101,15 @@ func sendStoreRequest(grpcClientMap map[string]rcppb.RCPClient) {
 	value, _ := reader.ReadString('\n')
 	value = strings.TrimSpace(value)
 
+	begin := time.Now()
 
 	resp, err := grpcClient.Store(context.Background(), &rcppb.KV{Key: key, Value: value})
 	if err != nil {
 		fmt.Println("Error sending request:", err)
 		return
 	}
+
+	log.Printf("TIME: %v", time.Since(begin))
 
 	fmt.Println("Store request sent! Result:", resp.Value)
 }
@@ -426,6 +430,8 @@ func main() {
 			printMetric()
 		case 0:
 			readAndSend("ops.json", grpcClientMap)
+		case 12:
+			printTP()
 		case -1:
 			fmt.Println("Exiting...")
 			return

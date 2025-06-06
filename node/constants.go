@@ -1,7 +1,8 @@
 package node
 
-import "time"
+// import "time"
 
 const (
-	HeartbeatInterval = 100 * time.Second
+	// HeartbeatInterval = 100 * time.Second
+	MaxLogsPerAppendEntry = 200
 )

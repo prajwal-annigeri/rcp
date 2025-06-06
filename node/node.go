@@ -127,7 +127,7 @@ func NewNode(thisNodeId, protocol string) (*Node, error) {
 		Live:                  true,
 		ClientMap:             make(map[string]rcppb.RCPClient),
 		electionTimer:         time.NewTimer(2 * time.Second),
-		logBufferChan:         make(chan *rcppb.LogEntry),
+		logBufferChan:         make(chan *rcppb.LogEntry, 10000),
 		failureLogWaitingSet:  make(map[string]struct{}),
 		recoveryLogWaitingSet: make(map[string]struct{}),
 		reachableNodes:        make(map[string]struct{}),
@@ -139,6 +139,9 @@ func NewNode(thisNodeId, protocol string) (*Node, error) {
 	} else if protocol == "raft" {
 		newNode.replicationQuorum = int(len(nodes)/2) + 1
 		newNode.protocol = "raft"
+	} else if protocol == "fraft" {
+		newNode.replicationQuorum = config.K + 1
+		newNode.protocol = "fraft"
 	} else {
 		log.Fatalf("Invalid protocol: %s", protocol)
 	}

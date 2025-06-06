@@ -13,7 +13,7 @@ import (
 var (
 	nodeId   = flag.String("id", "", "Node ID")
 	logs     = flag.Bool("logs", false, "Logging")
-	protocol = flag.String("protocol", "rcp", "raft/rcp")
+	protocol = flag.String("protocol", "rcp", "raft/fraft/rcp")
 )
 
 func main() {
@@ -27,8 +27,8 @@ func main() {
 		log.Fatalf("Node ID is required")
 	}
 
-	if *protocol != "rcp" && *protocol != "raft" {
-		log.Fatalf("protocol can either 'rcp' or 'raft'")
+	if *protocol != "rcp" && *protocol != "raft" && *protocol != "fraft" {
+		log.Fatalf("protocol can either 'rcp' or 'fraft' or 'raft'")
 	}
 
 	node, err := node.NewNode(*nodeId, *protocol)

@@ -65,7 +65,7 @@ func (d *Database) createBuckets() error {
 }
 
 func (d *Database) initializeAccounts() error {
-	zeroBalanceBytes := []byte("100")
+	balanceBytes := []byte("100")
 
 	return d.db.Update(func(tx *bolt.Tx) error {
 		checkingB := tx.Bucket(checkingBucket)
@@ -87,19 +87,19 @@ func (d *Database) initializeAccounts() error {
 			return fmt.Errorf("pending checking bucket not found during init")
 		}
 
-		for i := int64(1); i <= 100; i++ {
+		for i := int64(1); i <= 100000; i++ {
 			keyBytes := []byte(strconv.FormatInt(i, 10))
-			if err := checkingB.Put(keyBytes, zeroBalanceBytes); err != nil {
+			if err := checkingB.Put(keyBytes, balanceBytes); err != nil {
 				return fmt.Errorf("failed to set checking balance for account %d: %w", i, err)
 			}
-			if err := savingsB.Put(keyBytes, zeroBalanceBytes); err != nil {
+			if err := savingsB.Put(keyBytes, balanceBytes); err != nil {
 				return fmt.Errorf("failed to set savings balance for account %d: %w", i, err)
 			}
-			if err := pendingSavingsBkt.Put(keyBytes, zeroBalanceBytes); err != nil {
+			if err := pendingSavingsBkt.Put(keyBytes, balanceBytes); err != nil {
 				return fmt.Errorf("failed to set pending savings balance for account %d: %w", i, err)
 			}
 
-			if err := pendingCheckingBkt.Put(keyBytes, zeroBalanceBytes); err != nil {
+			if err := pendingCheckingBkt.Put(keyBytes, balanceBytes); err != nil {
 				return fmt.Errorf("failed to set pending checking balance for account %d: %w", i, err)
 			}
 		}

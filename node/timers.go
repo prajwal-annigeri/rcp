@@ -14,7 +14,7 @@ import (
 var printTimer bool
 
 func randomElectionTimeout(nodeNum int) time.Duration {
-	x := time.Duration(700+nodeNum*250) * time.Millisecond
+	x := time.Duration(1000+nodeNum*500) * time.Millisecond
 	// x := time.Duration(250 + rand.Intn(2500)) * time.Millisecond
 	if !printTimer {
 		log.Println(x)
@@ -51,26 +51,27 @@ func (node *Node) sendHeartbeats() {
 	for {
 		// Send AppendEntry only if live and is leader
 		if node.Live && node.isLeader {
-			now := time.Now()
-			doneReading := false
+			channelReadTimer := time.After(10 * time.Millisecond)
 			var logsToSend []*rcppb.LogEntry
-			for {
+			loop:
+			for i := 1;; {
+				if len(logsToSend) > MaxLogsPerAppendEntry {
+					break
+				}
 				select {
 				// read from the channel which has requests received from the client
 				case c := <-node.logBufferChan:
-					log.Printf("Read log from channel: %v\n", c)
+					log.Printf("Read log %d from channel\n", i)
 					c.Term = node.currentTerm
-					// node.replicatedCount.Store(c.)
 					logsToSend = append(logsToSend, c)
-				default:
-					doneReading = true
-				}
-				if doneReading {
-					break
+					i += 1
+				case <-channelReadTimer:
+					break loop
 				}
 			}
 
 			// Call AppendEntries on leader
+			begin1 := time.Now()
 			resp, err := node.AppendEntries(context.Background(), &rcppb.AppendEntriesReq{
 				Term:         node.currentTerm,
 				LeaderId:     node.Id,
@@ -90,9 +91,13 @@ func (node *Node) sendHeartbeats() {
 				return
 			}
 
+			if len(logsToSend) > 0 {
+				log.Printf("LOGX Time to self append entry: %v", time.Since(begin1))
+			}
+
 			// channel to collect all responses to AppendEntries
 			responseChan := make(chan *rcppb.AppendEntriesResponse)
-
+			begin2 := time.Now()
 			// Send AppendEntries to all other nodes
 			node.reachableSetLock.RLock()
 			for nodeId := range node.reachableNodes {
@@ -104,52 +109,58 @@ func (node *Node) sendHeartbeats() {
 			}
 			node.reachableSetLock.RUnlock()
 
+			if len(logsToSend) > 0 {
+				log.Printf("LOGX Time to send heartbeats to others: %v", time.Since(begin2))
+			}
 
-			// successResponses, maxTerm := countSuccessfulAppendEntries(responseChan, 100*time.Millisecond)
-			// waitTimer := time.After(1 * time.Second)
-			waitTimer := time.After(250 * time.Millisecond)
-			waitAfterCommit := time.After(10 * time.Second)
+			begin3 := time.Now()
+
+			waitTimer := time.After(5000 * time.Millisecond)
+			var waitAfterCommit <-chan time.Time = make(chan time.Time)
 			successResponses := 0
 			if selfSuccess {
 				successResponses = 1
 			}
-			isDone := false
-			for ;successResponses < len(node.ClientMap) && !isDone; {
+			// isDone := false
+			successReadingLoop:
+			for ;successResponses < len(node.ClientMap); {
 				select {
 				case resp := <-responseChan:
 					successResponses += 1
-					
+					if len(logsToSend) > 0 {
+						log.Printf("LOGX Success responses: %d, rep quorum: %d\n", successResponses, node.replicationQuorum)
+					}
 					if resp.Term > node.currentTerm {
 						node.currentTerm = resp.Term
 						node.isLeader = false
-						isDone = true
-						break
+						
+						break successReadingLoop
 					}
 
 					if successResponses == node.replicationQuorum {
 						node.commitIndex = node.lastIndex
-						// log.Printf("Committed index %d", node.commitIndex)
-						log.Printf("waiter here: %v", time.Since(now))
-						waitAfterCommit = time.After(50 * time.Millisecond)
+						// log.Printf("waiter here: %v", time.Since(now))
+						waitAfterCommit = time.After(10 * time.Millisecond)
+						if len(logsToSend) > 0 {
+							log.Printf("LOGX Setting shorter timer hopefully: %v", time.Since(begin3))
+						}
 					}
 				case <-waitTimer:
 					// log.Printf("Timer out")
-					isDone = true
+					if len(logsToSend) > 0 {
+						log.Printf("LOGX Breaking without quorum: %v Successes: %d", time.Since(begin3), successResponses)
+					}
+					break successReadingLoop
 				case <-waitAfterCommit:
-					isDone = true
+					if len(logsToSend) > 0 {
+						log.Printf("LOGX Time waiting for extra commits: %v", time.Since(begin3))
+					}
+					break successReadingLoop
 				}
 			}
-			
-			// if successResponses >= node.K+1 {
-			// 	node.commitIndex = node.lastIndex
-			// } else if maxTerm > node.currentTerm {
-			// 	node.currentTerm = maxTerm
-			// 	node.isLeader = false
-			// }
 
 		}
-		time.Sleep(5 * time.Millisecond)
-
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -203,18 +214,22 @@ func (node *Node) sendHeartbeatTo(client rcppb.RCPClient, nodeId string, respons
 	}
 	resp, err := client.AppendEntries(context.Background(), req)
 	if err != nil {
-		st, ok := status.FromError(err)
-		log.Printf("Received error response from %s to heartbeat: %v\n", nodeId, err)
-		if ok && st.Code() == codes.Unavailable {
-			node.checkInsertFailureLog(nodeId)
+		if node.protocol == "rcp" {
+			st, ok := status.FromError(err)
+			log.Printf("Received error response from %s to heartbeat: %v\n", nodeId, err)
+			if ok && st.Code() == codes.Unavailable {
+				node.checkInsertFailureLog(nodeId)
+			}
 		}
 		return
 	}
 	if len(req.Entries) > 0 {
 		log.Printf("Received append entries response from %s: %v", nodeId, resp)
 	}
-
-	go node.checkInsertRecoveryLog(nodeId)
+	if node.protocol == "rcp" {
+		go node.checkInsertRecoveryLog(nodeId)
+	}
+	
 	if resp.Success {
 		
 		if len(req.Entries) > 0 {
@@ -227,6 +242,10 @@ func (node *Node) sendHeartbeatTo(client rcppb.RCPClient, nodeId string, respons
 
 		}
 		if status, _ := node.serverStatusMap.Load(nodeId); status.(bool) {
+			// if len(req.Entries) > 0 {
+			// 	log.Printf("LOGX Sending resp: %v to chan from %s", resp.Success, nodeId)
+			// }
+			
 			responsesChan <- resp
 			// node.increaseReplicationCount(req.PrevLogIndex + int64(len(req.Entries)))
 		}

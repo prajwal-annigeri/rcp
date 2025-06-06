@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"rcp/rcppb"
+	"slices"
 	"sync"
 	"time"
 
@@ -22,15 +25,20 @@ type OperationStruct struct {
 	SrcNodeID     string `json:"src_node_id"`
 	DstNodeID     string `json:"dst_node_id"`
 	Delay         *int64 `json:"delay"`
+	Key           string `json:"key"`
+	Value         string `json:"value"`
 }
 
 var (
-	opsCount  int
-	totalTime time.Duration
+	opsCount     int
+	totalTime    time.Duration
+	latencySlice []int64
+	endTime      time.Time
+	beginTime    time.Time
 )
 
 func readAndSend(filename string, grpcClientMap map[string]rcppb.RCPClient) {
-	opsCount = 0
+	// opsCount = 0
 	jsonData, err := os.ReadFile(filename)
 	if err != nil {
 		log.Fatalf("Error reading file %s: %v", filename, err)
@@ -43,17 +51,43 @@ func readAndSend(filename string, grpcClientMap map[string]rcppb.RCPClient) {
 		log.Fatalf("Error unmarshalling JSON from file %s: %v", filename, err)
 	}
 	log.Println("Processing operations from file:", filename)
+	opsCount = len(operations)
+	beginTime = time.Now()
 	for i, op := range operations {
 		go doOp(op, grpcClientMap, i)
-		time.Sleep(10 * time.Millisecond)
+		// time.Sleep(10 * time.Millisecond)
 	}
+	// writeDurationsToFile()
 	log.Println("--- Processing complete ---")
 }
 
 func doOp(op OperationStruct, grpcClientMap map[string]rcppb.RCPClient, i int) {
-	log.Printf("--- Operation %d ---\n", i+1)
-	
+	log.Printf("--- Operation %d ---\n", i)
+	var begin time.Time
+	var dur time.Duration
 	switch op.Operation {
+
+	case "KV_Store":
+		if op.NodeID == "" {
+			log.Println("Error: no node_id")
+			return
+		}
+		log.Printf("Operation: KV Store %s: %s %s\n", op.Key, op.Value, op.NodeID)
+		grpcClient, ok := grpcClientMap[op.NodeID]
+		if !ok {
+			log.Printf("No gRPC client for %s", op.NodeID)
+			return
+		}
+		begin := time.Now()
+		_, err := grpcClient.Store(context.Background(), &rcppb.KV{Key: op.Key, Value: op.Value})
+		if err != nil {
+			log.Printf("Error with store: %v", err)
+		} else {
+			t := time.Now()
+			log.Printf("Time taken op %d: %v\n", i, t.Sub(begin))
+			go calcThroughPut(i, t)
+		}
+		
 	case "kill":
 		if op.NodeID == "" {
 			log.Println("Error: no node_id")
@@ -83,7 +117,7 @@ func doOp(op OperationStruct, grpcClientMap map[string]rcppb.RCPClient, i int) {
 			log.Println("No src_node_id or dst_node_id")
 			return
 		}
-		log.Printf("Operation set delay from %s to %s: %dms", op.SrcNodeID, op.DstNodeID, op.Delay)
+		log.Printf("Operation set delay from %s to %s: %dms", op.SrcNodeID, op.DstNodeID, *op.Delay)
 		grpcClient, ok := grpcClientMap[op.SrcNodeID]
 		if !ok {
 			log.Printf("No gRPC client for %s", op.NodeID)
@@ -111,16 +145,17 @@ func doOp(op OperationStruct, grpcClientMap map[string]rcppb.RCPClient, i int) {
 			log.Printf("No gRPC client for %s", op.NodeID)
 			return
 		}
-		begin := time.Now()
+		begin = time.Now()
 		resp, err := grpcClient.GetBalance(context.Background(), &rcppb.GetBalanceRequest{AccountId: op.AccountID})
-		end := time.Since(begin)
+		dur = time.Since(begin)
 		if err != nil {
 			log.Printf("Error response: %v", err)
 		} else {
 			log.Printf("Checking: %d    Savings: %d", resp.CheckingBalance, resp.SavingsBalance)
 		}
 
-		log.Printf("Time taken op %d: %v", i, end)
+		log.Printf("Time taken op %d: %v", i, dur)
+		latencySlice = append(latencySlice, dur.Milliseconds())
 		// go updateMetric(end)
 	case "deposit_checking":
 		if op.AccountID == "" || op.Amount == nil || op.NodeID == "" {
@@ -130,19 +165,20 @@ func doOp(op OperationStruct, grpcClientMap map[string]rcppb.RCPClient, i int) {
 		log.Printf("Operation: Deposit Checking\n")
 		log.Printf("Account ID: %s\n", op.AccountID)
 		log.Printf("Amount: %d\n", *op.Amount)
-		begin := time.Now()
 		grpcClient, ok := grpcClientMap[op.NodeID]
 		if !ok {
 			log.Printf("No gRPC client for %s", op.NodeID)
 			return
 		}
+		begin = time.Now()
 		_, err := grpcClient.DepositChecking(context.Background(), &rcppb.DepositCheckingRequest{AccountId: op.AccountID, Amount: *op.Amount})
-		end := time.Since(begin)
+		dur = time.Since(begin)
 		if err != nil {
 			log.Printf("Error response: %v", err)
 		}
-		log.Printf("Time taken op %d: %v", i, end)
-		go updateMetric(end)
+
+		latencySlice = append(latencySlice, dur.Milliseconds())
+		go updateMetric(dur)
 	case "send_payment":
 		if op.SrcAccountID == "" || op.DestAccountID == "" || op.Amount == nil {
 			log.Println("Error: send_payment requires src_account_id, dest_account_id, and amount")
@@ -157,14 +193,14 @@ func doOp(op OperationStruct, grpcClientMap map[string]rcppb.RCPClient, i int) {
 			log.Printf("No gRPC client for %s", op.NodeID)
 			return
 		}
-		begin := time.Now()
+		begin = time.Now()
 		_, err := grpcClient.SendPayment(context.Background(), &rcppb.SendPaymentRequest{AccountIdFrom: op.SrcAccountID, AccountIdTo: op.DestAccountID, Amount: *op.Amount})
-		end := time.Since(begin)
+		dur = time.Since(begin)
 		if err != nil {
 			log.Printf("Error response: %v", err)
 		}
-		log.Printf("Time taken op %d: %v", i, end)
-		go updateMetric(end)
+		latencySlice = append(latencySlice, dur.Milliseconds())
+		go updateMetric(dur)
 	case "write_check":
 		if op.AccountID == "" || op.Amount == nil {
 			log.Println("Error: write_check requires account_id and amount")
@@ -178,14 +214,14 @@ func doOp(op OperationStruct, grpcClientMap map[string]rcppb.RCPClient, i int) {
 			log.Printf("No gRPC client for %s", op.NodeID)
 			return
 		}
-		begin := time.Now()
+		begin = time.Now()
 		_, err := grpcClient.WriteCheck(context.Background(), &rcppb.WriteCheckRequest{AccountId: op.AccountID, Amount: *op.Amount})
-		end := time.Since(begin)
+		dur = time.Since(begin)
 		if err != nil {
 			log.Printf("Error response: %v", err)
 		}
-		log.Printf("Time taken op %d: %v", i, end)
-		go updateMetric(end)
+		latencySlice = append(latencySlice, dur.Milliseconds())
+		go updateMetric(dur)
 
 	case "amalgamate":
 		if op.SrcAccountID == "" || op.DestAccountID == "" {
@@ -200,14 +236,14 @@ func doOp(op OperationStruct, grpcClientMap map[string]rcppb.RCPClient, i int) {
 			log.Printf("No gRPC client for %s", op.NodeID)
 			return
 		}
-		begin := time.Now()
+		begin = time.Now()
 		_, err := grpcClient.Amalgamate(context.Background(), &rcppb.AmalgamateRequest{AccountIdFrom: op.SrcAccountID, AccountIdTo: op.DestAccountID})
-		end := time.Since(begin)
+		dur = time.Since(begin)
 		if err != nil {
 			log.Printf("Error response: %v", err)
 		}
-		log.Printf("Time taken op %d: %v", i, end)
-		go updateMetric(end)
+		latencySlice = append(latencySlice, dur.Milliseconds())
+		go updateMetric(dur)
 	case "transact_savings":
 		if op.AccountID == "" || op.Amount == nil {
 			log.Println("Error: transact_savings requires src_account_id and amount")
@@ -221,18 +257,19 @@ func doOp(op OperationStruct, grpcClientMap map[string]rcppb.RCPClient, i int) {
 			log.Printf("No gRPC client for %s", op.NodeID)
 			return
 		}
-		begin := time.Now()
+		begin = time.Now()
 		_, err := grpcClient.TransactSavings(context.Background(), &rcppb.TransactSavingsRequest{AccountId: op.AccountID, Amount: *op.Amount})
-		end := time.Since(begin)
+		dur = time.Since(begin)
 		if err != nil {
 			log.Printf("Error response: %v", err)
 		}
-		log.Printf("Time taken op %d: %v", i, end)
-		go updateMetric(end)
+		latencySlice = append(latencySlice, dur.Milliseconds())
+		go updateMetric(dur)
 
 	default:
 		log.Printf("Unknown operation: %s\n", op.Operation)
 	}
+	// log.Printf("Time taken op %d: %v", i, dur)
 }
 
 var mutex sync.Mutex
@@ -246,4 +283,52 @@ func updateMetric(timeTaken time.Duration) {
 
 func printMetric() {
 	log.Printf("%v", totalTime/time.Duration(opsCount))
+}
+
+func writeDurationsToFile() error {
+	// Create or truncate the file
+	filename := fmt.Sprintf("%s.txt", time.Now().String())
+	file, err := os.Create(filename)
+	slices.Sort(latencySlice)
+	if err != nil {
+		return fmt.Errorf("failed to create file %s: %w", filename, err)
+	}
+	defer file.Close() // Ensure file is closed when function returns
+
+	// Create a new writer
+	writer := bufio.NewWriter(file)
+
+	// Write each duration to the file
+	for i, d := range latencySlice {
+		// Convert duration to string (e.g., "5s", "1m30s")
+		// The String() method of time.Duration provides a convenient format.
+		_, err := fmt.Fprintf(writer, "%d,", d)
+		if err != nil {
+			return fmt.Errorf("failed to write duration %d (%v) to file: %w", i, d, err)
+		}
+	}
+
+	// Flush ensures all buffered data is written to the file
+	err = writer.Flush()
+	if err != nil {
+		return fmt.Errorf("failed to flush writer: %w", err)
+	}
+
+	fmt.Printf("Successfully wrote %d durations to %s\n", len(latencySlice), filename)
+	return nil
+}
+
+var mutexTP sync.Mutex
+
+func calcThroughPut(opNum int, endT time.Time) {
+	mutexTP.Lock()
+	defer mutexTP.Unlock()
+	if endTime.Before(endT) {
+		endTime = endT
+	}
+}
+
+func printTP() {
+	log.Printf("Time taken %v, ops: %d\n", endTime.Sub(beginTime), opsCount)
+	log.Printf("Throughput: %.2f", float64(opsCount) / endTime.Sub(beginTime).Seconds())
 }
