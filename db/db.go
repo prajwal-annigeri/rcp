@@ -15,6 +15,7 @@ var (
 	locksBucket     = []byte("locks")
 	pendingSavings  = []byte("pending_savings")
 	pendingChecking = []byte("pending_checking")
+	usertable       = []byte("usertable")
 )
 
 type Database struct {
@@ -53,6 +54,7 @@ func (d *Database) createBuckets() error {
 			locksBucket,
 			pendingSavings,
 			pendingChecking,
+			usertable,
 		}
 
 		for _, bucketName := range bucketsToCreate {

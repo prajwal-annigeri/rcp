@@ -13,6 +13,7 @@ message LogEntry {
     Transaction transaction2 = 6;
     int64 term = 7;
     string callbackChannelId = 8;
+    string bucket = 9;
 }
 
 message Transaction {
@@ -49,13 +50,20 @@ message RequestVoteResponse {
     bool voteGranted = 2;
 }
 
-message KV {
+message StoreRequest {
     string key = 1;
     string value = 2;
+    string bucket = 3;
 }
 
 message GetValueReq {
     string key = 1;
+    string bucket = 2;
+}
+
+message DeleteReq {
+    string key = 1;
+    string bucket = 2;
 }
 
 message GetValueResponse {
@@ -110,7 +118,8 @@ message TransactSavingsRequest {
 service RCP {
     rpc AppendEntries(AppendEntriesReq) returns (AppendEntriesResponse) {}
     rpc RequestVote (RequestVoteReq) returns (RequestVoteResponse) {}
-    rpc Store(KV) returns (google.protobuf.BoolValue) {}
+    rpc Store(StoreRequest) returns (google.protobuf.BoolValue) {}
+    rpc Delete(DeleteReq) returns (google.protobuf.BoolValue) {}
     rpc Get(GetValueReq) returns (GetValueResponse) {}
     rpc SetStatus(google.protobuf.BoolValue) returns (google.protobuf.BoolValue) {}
     rpc Partition(PartitionReq) returns (google.protobuf.BoolValue) {}

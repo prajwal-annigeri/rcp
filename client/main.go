@@ -54,9 +54,10 @@ func displayMenu() {
 	fmt.Println("4. Revive server")
 	fmt.Println("5. Partition")
 	fmt.Println("6. Set Delay")
-	fmt.Println("7. Get Balance")
-	fmt.Println("8. Deposit Checking")
-	fmt.Println("9. Write Check")
+	fmt.Println("7. Delete Key")
+	// fmt.Println("7. Get Balance")
+	// fmt.Println("8. Deposit Checking")
+	// fmt.Println("9. Write Check")
 	fmt.Println("10. Performance")
 	fmt.Println("-1. Exit")
 }
@@ -101,9 +102,13 @@ func sendStoreRequest(grpcClientMap map[string]rcppb.RCPClient) {
 	value, _ := reader.ReadString('\n')
 	value = strings.TrimSpace(value)
 
+	fmt.Print("Enter Bucket: ")
+	bucket, _ := reader.ReadString('\n')
+	bucket = strings.TrimSpace(bucket)
+
 	begin := time.Now()
 
-	resp, err := grpcClient.Store(context.Background(), &rcppb.KV{Key: key, Value: value})
+	resp, err := grpcClient.Store(context.Background(), &rcppb.StoreRequest{Key: key, Value: value, Bucket: bucket})
 	if err != nil {
 		fmt.Println("Error sending request:", err)
 		return
@@ -112,6 +117,49 @@ func sendStoreRequest(grpcClientMap map[string]rcppb.RCPClient) {
 	log.Printf("TIME: %v", time.Since(begin))
 
 	fmt.Println("Store request sent! Result:", resp.Value)
+}
+
+func sendDeleteRequest(grpcClientMap map[string]rcppb.RCPClient) {
+	reader := bufio.NewReader(os.Stdin)
+
+	// Ask for Server ID
+	fmt.Print("Enter Node ID (e.g., S1, S2, S3): ")
+	nodeID, _ := reader.ReadString('\n')
+	nodeID = strings.TrimSpace(nodeID)
+
+	// Get HTTP port for the server
+	// httpPort, exists := serverMap[serverID]
+	// if !exists {
+	// 	fmt.Println("Invalid Server ID!")
+	// 	return
+	// }
+
+	grpcClient, ok := grpcClientMap[nodeID]
+	if !ok {
+		log.Printf("No gRPC client for node %s", nodeID)
+		return
+	}
+
+	// Ask for Key and Value
+	fmt.Print("Enter Key: ")
+	key, _ := reader.ReadString('\n')
+	key = strings.TrimSpace(key)
+
+	fmt.Print("Enter Bucket: ")
+	bucket, _ := reader.ReadString('\n')
+	bucket = strings.TrimSpace(bucket)
+
+	begin := time.Now()
+
+	resp, err := grpcClient.Delete(context.Background(), &rcppb.DeleteReq{Key: key, Bucket: bucket})
+	if err != nil {
+		fmt.Println("Error sending request:", err)
+		return
+	}
+
+	log.Printf("TIME: %v", time.Since(begin))
+
+	fmt.Println("Delete request sent! Result:", resp.Value)
 }
 
 func doPartition(grpcClientMap map[string]rcppb.RCPClient) {
@@ -166,8 +214,13 @@ func getValue(grpcClientMap map[string]rcppb.RCPClient) {
 	key, _ := reader.ReadString('\n')
 	key = strings.TrimSpace(key)
 
+	// Ask for Bucket
+	fmt.Print("Enter Bucket: ")
+	bucket, _ := reader.ReadString('\n')
+	bucket = strings.TrimSpace(bucket)
+
 	if serverID == "all" {
-		GetValuesFromAll(grpcClientMap, key)
+		GetValuesFromAll(grpcClientMap, key, bucket)
 	} else {
 		grpcClient, ok := grpcClientMap[serverID]
 		if !ok {
@@ -175,7 +228,7 @@ func getValue(grpcClientMap map[string]rcppb.RCPClient) {
 			return
 		}
 		
-		value, err := GetValueFrom(grpcClient, key)
+		value, err := GetValueFrom(grpcClient, key, bucket)
 		if err != nil {
 			fmt.Printf("Error getting value from server %s: %v\n", serverID, err)
 			return
@@ -185,8 +238,8 @@ func getValue(grpcClientMap map[string]rcppb.RCPClient) {
 
 }
 
-func GetValueFrom(grpcClient rcppb.RCPClient, key string) (string, error) {
-	val, err := grpcClient.Get(context.Background(), &rcppb.GetValueReq{Key: key})
+func GetValueFrom(grpcClient rcppb.RCPClient, key string, bucket string) (string, error) {
+	val, err := grpcClient.Get(context.Background(), &rcppb.GetValueReq{Key: key, Bucket: bucket})
 	if err != nil {
 		return "", err
 	}
@@ -195,9 +248,9 @@ func GetValueFrom(grpcClient rcppb.RCPClient, key string) (string, error) {
 }
 
 // GetValuesFromAll queries all servers for a key
-func GetValuesFromAll(grpcClientMap map[string]rcppb.RCPClient, key string) {
+func GetValuesFromAll(grpcClientMap map[string]rcppb.RCPClient, key string, bucket string) {
 	for serverID, grpcClient := range grpcClientMap {
-		value, err := GetValueFrom(grpcClient, key)
+		value, err := GetValueFrom(grpcClient, key, bucket)
 		if err != nil {
 			fmt.Printf("Error querying server %s: %v\n", serverID, err)
 		} else {
@@ -421,7 +474,8 @@ func main() {
 		case 6:
 			sendDelayRequest(grpcClientMap)
 		case 7:
-			getBalance(grpcClientMap)
+			sendDeleteRequest(grpcClientMap)
+			// getBalance(grpcClientMap)
 		case 8:
 			depositChecking(grpcClientMap)
 		case 9:

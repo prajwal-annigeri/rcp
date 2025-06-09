@@ -23,6 +23,7 @@ const (
 	RCP_AppendEntries_FullMethodName   = "/rcppb.RCP/AppendEntries"
 	RCP_RequestVote_FullMethodName     = "/rcppb.RCP/RequestVote"
 	RCP_Store_FullMethodName           = "/rcppb.RCP/Store"
+	RCP_Delete_FullMethodName          = "/rcppb.RCP/Delete"
 	RCP_Get_FullMethodName             = "/rcppb.RCP/Get"
 	RCP_SetStatus_FullMethodName       = "/rcppb.RCP/SetStatus"
 	RCP_Partition_FullMethodName       = "/rcppb.RCP/Partition"
@@ -41,7 +42,8 @@ const (
 type RCPClient interface {
 	AppendEntries(ctx context.Context, in *AppendEntriesReq, opts ...grpc.CallOption) (*AppendEntriesResponse, error)
 	RequestVote(ctx context.Context, in *RequestVoteReq, opts ...grpc.CallOption) (*RequestVoteResponse, error)
-	Store(ctx context.Context, in *KV, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
+	Store(ctx context.Context, in *StoreRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
+	Delete(ctx context.Context, in *DeleteReq, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
 	Get(ctx context.Context, in *GetValueReq, opts ...grpc.CallOption) (*GetValueResponse, error)
 	SetStatus(ctx context.Context, in *wrapperspb.BoolValue, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
 	Partition(ctx context.Context, in *PartitionReq, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
@@ -82,10 +84,20 @@ func (c *rCPClient) RequestVote(ctx context.Context, in *RequestVoteReq, opts ..
 	return out, nil
 }
 
-func (c *rCPClient) Store(ctx context.Context, in *KV, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error) {
+func (c *rCPClient) Store(ctx context.Context, in *StoreRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(wrapperspb.BoolValue)
 	err := c.cc.Invoke(ctx, RCP_Store_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rCPClient) Delete(ctx context.Context, in *DeleteReq, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(wrapperspb.BoolValue)
+	err := c.cc.Invoke(ctx, RCP_Delete_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +210,8 @@ func (c *rCPClient) TransactSavings(ctx context.Context, in *TransactSavingsRequ
 type RCPServer interface {
 	AppendEntries(context.Context, *AppendEntriesReq) (*AppendEntriesResponse, error)
 	RequestVote(context.Context, *RequestVoteReq) (*RequestVoteResponse, error)
-	Store(context.Context, *KV) (*wrapperspb.BoolValue, error)
+	Store(context.Context, *StoreRequest) (*wrapperspb.BoolValue, error)
+	Delete(context.Context, *DeleteReq) (*wrapperspb.BoolValue, error)
 	Get(context.Context, *GetValueReq) (*GetValueResponse, error)
 	SetStatus(context.Context, *wrapperspb.BoolValue) (*wrapperspb.BoolValue, error)
 	Partition(context.Context, *PartitionReq) (*wrapperspb.BoolValue, error)
@@ -225,8 +238,11 @@ func (UnimplementedRCPServer) AppendEntries(context.Context, *AppendEntriesReq) 
 func (UnimplementedRCPServer) RequestVote(context.Context, *RequestVoteReq) (*RequestVoteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RequestVote not implemented")
 }
-func (UnimplementedRCPServer) Store(context.Context, *KV) (*wrapperspb.BoolValue, error) {
+func (UnimplementedRCPServer) Store(context.Context, *StoreRequest) (*wrapperspb.BoolValue, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Store not implemented")
+}
+func (UnimplementedRCPServer) Delete(context.Context, *DeleteReq) (*wrapperspb.BoolValue, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Delete not implemented")
 }
 func (UnimplementedRCPServer) Get(context.Context, *GetValueReq) (*GetValueResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Get not implemented")
@@ -316,7 +332,7 @@ func _RCP_RequestVote_Handler(srv interface{}, ctx context.Context, dec func(int
 }
 
 func _RCP_Store_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(KV)
+	in := new(StoreRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -328,7 +344,25 @@ func _RCP_Store_Handler(srv interface{}, ctx context.Context, dec func(interface
 		FullMethod: RCP_Store_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RCPServer).Store(ctx, req.(*KV))
+		return srv.(RCPServer).Store(ctx, req.(*StoreRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RCP_Delete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RCPServer).Delete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RCP_Delete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RCPServer).Delete(ctx, req.(*DeleteReq))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -531,6 +565,10 @@ var RCP_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Store",
 			Handler:    _RCP_Store_Handler,
+		},
+		{
+			MethodName: "Delete",
+			Handler:    _RCP_Delete_Handler,
 		},
 		{
 			MethodName: "Get",

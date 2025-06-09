@@ -27,6 +27,7 @@ type OperationStruct struct {
 	Delay         *int64 `json:"delay"`
 	Key           string `json:"key"`
 	Value         string `json:"value"`
+	Bucket        string `json:"bucket"`
 }
 
 var (
@@ -72,14 +73,14 @@ func doOp(op OperationStruct, grpcClientMap map[string]rcppb.RCPClient, i int) {
 			log.Println("Error: no node_id")
 			return
 		}
-		log.Printf("Operation: KV Store %s: %s %s\n", op.Key, op.Value, op.NodeID)
+		log.Printf("Operation: KV Store Key: %s, Value: %s, Bucket: %s to node %s\n", op.Key, op.Value, op.Bucket, op.NodeID)
 		grpcClient, ok := grpcClientMap[op.NodeID]
 		if !ok {
 			log.Printf("No gRPC client for %s", op.NodeID)
 			return
 		}
 		begin := time.Now()
-		_, err := grpcClient.Store(context.Background(), &rcppb.KV{Key: op.Key, Value: op.Value})
+		_, err := grpcClient.Store(context.Background(), &rcppb.StoreRequest{Key: op.Key, Value: op.Value})
 		if err != nil {
 			log.Printf("Error with store: %v", err)
 		} else {
@@ -87,7 +88,6 @@ func doOp(op OperationStruct, grpcClientMap map[string]rcppb.RCPClient, i int) {
 			log.Printf("Time taken op %d: %v\n", i, t.Sub(begin))
 			go calcThroughPut(i, t)
 		}
-		
 	case "kill":
 		if op.NodeID == "" {
 			log.Println("Error: no node_id")
@@ -330,5 +330,5 @@ func calcThroughPut(opNum int, endT time.Time) {
 
 func printTP() {
 	log.Printf("Time taken %v, ops: %d\n", endTime.Sub(beginTime), opsCount)
-	log.Printf("Throughput: %.2f", float64(opsCount) / endTime.Sub(beginTime).Seconds())
+	log.Printf("Throughput: %.2f", float64(opsCount)/endTime.Sub(beginTime).Seconds())
 }

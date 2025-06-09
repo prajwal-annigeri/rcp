@@ -176,7 +176,7 @@ func NewNode(thisNodeId, protocol string) (*Node, error) {
 func (node *Node) Start() {
 
 	// starts HTTP server used by clients to interact with server
-	// go node.startHttpServer()
+	go node.startHttpServer()
 	time.Sleep(1 * time.Second)
 
 	// establish gRPC connections with ohter nodes

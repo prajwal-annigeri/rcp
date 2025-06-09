@@ -64,7 +64,7 @@ func (node *Node) printState() {
 	log.Printf("%s", serverStatusString.String())
 }
 
-func (node *Node) forwardToLeader(KV *rcppb.KV) {
+func (node *Node) forwardToLeader(storeReq *rcppb.StoreRequest) {
 
 	// Construct the HTTP request
 	leader, ok := node.votedFor.Load(node.currentTerm)
@@ -74,8 +74,8 @@ func (node *Node) forwardToLeader(KV *rcppb.KV) {
 	}
 	client, ok := node.ClientMap[leader.(string)]
 	if ok {
-		client.Store(context.Background(), &rcppb.KV{Key: KV.Key, Value: KV.Value})
-		log.Printf("Forwarded req with key: %s, value: %s to leader: %s\n", KV.Key, KV.Value, leader.(string))
+		client.Store(context.Background(), &rcppb.StoreRequest{Key: storeReq.Key, Value: storeReq.Value, Bucket: storeReq.Bucket})
+		log.Printf("Forwarded req with key: %s, value: %s to leader: %s\n", storeReq.Key, storeReq.Value, leader.(string))
 	}
 }
 

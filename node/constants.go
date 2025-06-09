@@ -5,4 +5,5 @@ package node
 const (
 	// HeartbeatInterval = 100 * time.Second
 	MaxLogsPerAppendEntry = 200
+	DefaultBucket = "store"
 )

@@ -132,7 +132,7 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 	// begin := time.Now()
 	// time.Sleep(time.Duration(requestVoteReq.Delay) * time.Millisecond)
 	// log.Printf("Slept for %v", time.Since(begin))
-	
+
 	// node.reachableSetLock.RLock()
 	// _, reachable := node.reachableNodes[requestVoteReq.CandidateId]
 	// node.reachableSetLock.RUnlock()
@@ -184,13 +184,17 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 	}, status.Error(codes.PermissionDenied, fmt.Sprintf("already voted for %s for term %d", votedFor.(string), requestVoteReq.Term))
 }
 
-func (node *Node) Store(ctx context.Context, KV *rcppb.KV) (*wrapperspb.BoolValue, error) {
+func (node *Node) Store(ctx context.Context, KV *rcppb.StoreRequest) (*wrapperspb.BoolValue, error) {
 
 	if KV.Key == "" {
-		return nil, errors.New("key cannot be empty")
+		return nil, errors.New("key required")
 	}
 
-	log.Printf("Received data: Key=%s, Value=%s", KV.Key, KV.Value)
+	if KV.Bucket == "" {
+		KV.Bucket = DefaultBucket
+	}
+
+	log.Printf("Received data: Key=%s, Value=%s, Bucket=%s", KV.Key, KV.Value, KV.Bucket)
 
 	if !node.isLeader {
 		leader, ok := node.votedFor.Load(node.currentTerm)
@@ -200,8 +204,8 @@ func (node *Node) Store(ctx context.Context, KV *rcppb.KV) (*wrapperspb.BoolValu
 		}
 		grpcClient, ok := node.ClientMap[leader.(string)]
 		if ok {
-			log.Printf("Forwarded req with key: %s, value: %s to leader: %s\n", KV.Key, KV.Value, leader.(string))
-			return grpcClient.Store(context.Background(), &rcppb.KV{Key: KV.Key, Value: KV.Value})
+			log.Printf("Forwarded req with key: %s, value: %s, bucket: %s to leader: %s\n", KV.Key, KV.Value, KV.Bucket, leader.(string))
+			return grpcClient.Store(context.Background(), &rcppb.StoreRequest{Key: KV.Key, Value: KV.Value, Bucket: KV.Bucket})
 		}
 	} else {
 		callbackChannelId, callbackChannel := node.makeCallbackChannel()
@@ -213,16 +217,10 @@ func (node *Node) Store(ctx context.Context, KV *rcppb.KV) (*wrapperspb.BoolValu
 				Key:               KV.Key,
 				Value:             KV.Value,
 				CallbackChannelId: callbackChannelId,
+				Bucket:            KV.Bucket,
 			}
 		}()
 
-		// callbackChannelRaw, ok := node.callbackChannelMap.Load(callbackChannelId)
-		// if !ok {
-		// 	log.Printf("BUG: no callback channel")
-		// 	return nil, errors.New("no callback channel")
-		// }
-
-		// callbackChannel := callbackChannelRaw.(chan struct{})
 		log.Printf("Time before select: %v", time.Since(begin))
 		select {
 		case <-callbackChannel:
@@ -238,14 +236,64 @@ func (node *Node) Store(ctx context.Context, KV *rcppb.KV) (*wrapperspb.BoolValu
 }
 
 func (node *Node) Get(ctx context.Context, req *rcppb.GetValueReq) (*rcppb.GetValueResponse, error) {
-
-	value, err := node.db.GetKV(req.Key)
+	if req.Bucket == "" {
+		req.Bucket = DefaultBucket
+	}
+	value, err := node.db.GetKV(req.Key, req.Bucket)
 
 	if err != nil {
 		log.Printf("Error getting value for %s: %v\n", req.Key, err)
 		return nil, err
 	}
 	return &rcppb.GetValueResponse{Success: true, Value: value}, nil
+}
+
+func (node *Node) Delete(ctx context.Context, req *rcppb.DeleteReq) (*wrapperspb.BoolValue, error) {
+	if req.Key == "" {
+		return nil, errors.New("key required")
+	}
+
+	if req.Bucket == "" {
+		req.Bucket = DefaultBucket
+	}
+
+	log.Printf("Received delete: Key=%s, Bucket=%s", req.Key, req.Bucket)
+
+	if !node.isLeader {
+		leader, ok := node.votedFor.Load(node.currentTerm)
+		if !ok {
+			log.Println("BUG: NO LEADER")
+			return nil, errors.New("no leader")
+		}
+		grpcClient, ok := node.ClientMap[leader.(string)]
+		if ok {
+			log.Printf("Forwarded delete req with key: %s, bucket: %s to leader: %s\n", req.Key, req.Bucket, leader.(string))
+			return grpcClient.Delete(context.Background(), &rcppb.DeleteReq{Key: req.Key, Bucket: req.Bucket})
+		}
+	} else {
+		callbackChannelId, callbackChannel := node.makeCallbackChannel()
+		defer node.callbackChannelMap.Delete(callbackChannelId)
+		begin := time.Now()
+		go func() {
+			node.logBufferChan <- &rcppb.LogEntry{
+				LogType:           "delete",
+				Key:               req.Key,
+				CallbackChannelId: callbackChannelId,
+				Bucket:            req.Bucket,
+			}
+		}()
+
+		select {
+		case <-callbackChannel:
+			log.Println("Got callback")
+			log.Printf("Time: %v", time.Since(begin))
+			return &wrapperspb.BoolValue{Value: true}, nil
+		case <-time.After(20 * time.Second):
+			log.Printf("TIMED OUT Delete key: %s, bucket: %s", req.Key, req.Bucket)
+			return nil, errors.New("timed out")
+		}
+	}
+	return &wrapperspb.BoolValue{Value: true}, nil
 }
 
 func (node *Node) SetStatus(ctx context.Context, req *wrapperspb.BoolValue) (*wrapperspb.BoolValue, error) {

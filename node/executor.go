@@ -13,7 +13,9 @@ func (node *Node) executor() {
 			logEntry, err := node.db.GetLogAtIndex(node.execIndex + 1)
 			if err == nil {
 				if logEntry.LogType == "store" {
-					node.db.PutKV(logEntry.Key, logEntry.Value)
+					node.db.PutKV(logEntry.Key, logEntry.Value, logEntry.Bucket)
+				} else if logEntry.LogType == "delete" {
+					node.db.DeleteKV(logEntry.Key, logEntry.Bucket)
 				} else if logEntry.LogType == "failure" {
 					node.currAlive -= 1
 					node.serverStatusMap.Store(logEntry.NodeId, false)
