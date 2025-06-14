@@ -2,24 +2,18 @@ package db
 
 import (
 	"fmt"
+	"rcp/constants"
 	"strconv"
 
 	bolt "go.etcd.io/bbolt"
 )
 
 var (
-	logsBucket      = []byte("logs")
-	kvBucket        = []byte("store")
-	savingsBucket   = []byte("savings")
-	checkingBucket  = []byte("checking")
-	locksBucket     = []byte("locks")
-	pendingSavings  = []byte("pending_savings")
-	pendingChecking = []byte("pending_checking")
-	usertable       = []byte("usertable")
+	
 )
 
 type Database struct {
-	db *bolt.DB
+	DB *bolt.DB
 }
 
 func InitDatabase(dbPath string) (db *Database, closeFunc func() error, err error) {
@@ -29,7 +23,7 @@ func InitDatabase(dbPath string) (db *Database, closeFunc func() error, err erro
 	}
 
 	db = &Database{
-		db: boltDB,
+		DB: boltDB,
 	}
 	if err := db.createBuckets(); err != nil {
 		boltDB.Close()
@@ -45,16 +39,16 @@ func InitDatabase(dbPath string) (db *Database, closeFunc func() error, err erro
 }
 
 func (d *Database) createBuckets() error {
-	return d.db.Update(func(tx *bolt.Tx) error {
+	return d.DB.Update(func(tx *bolt.Tx) error {
 		bucketsToCreate := [][]byte{
-			logsBucket,
-			kvBucket,
-			savingsBucket,
-			checkingBucket,
-			locksBucket,
-			pendingSavings,
-			pendingChecking,
-			usertable,
+			constants.LogsBucket,
+			constants.KvBucket,
+			constants.SavingsBucket,
+			constants.CheckingBucket,
+			constants.LocksBucket,
+			constants.PendingSavings,
+			constants.PendingChecking,
+			constants.Usertable,
 		}
 
 		for _, bucketName := range bucketsToCreate {
@@ -69,22 +63,22 @@ func (d *Database) createBuckets() error {
 func (d *Database) initializeAccounts() error {
 	balanceBytes := []byte("100")
 
-	return d.db.Update(func(tx *bolt.Tx) error {
-		checkingB := tx.Bucket(checkingBucket)
+	return d.DB.Update(func(tx *bolt.Tx) error {
+		checkingB := tx.Bucket(constants.CheckingBucket)
 		if checkingB == nil {
 			return fmt.Errorf("checking bucket not found during init")
 		}
-		savingsB := tx.Bucket(savingsBucket)
+		savingsB := tx.Bucket(constants.SavingsBucket)
 		if savingsB == nil {
 			return fmt.Errorf("savings bucket not found during init")
 		}
 
-		pendingSavingsBkt := tx.Bucket(pendingSavings)
+		pendingSavingsBkt := tx.Bucket(constants.PendingSavings)
 		if pendingSavingsBkt == nil {
 			return fmt.Errorf("pending savings bucket not found during init")
 		}
 
-		pendingCheckingBkt := tx.Bucket(pendingChecking)
+		pendingCheckingBkt := tx.Bucket(constants.PendingChecking)
 		if pendingCheckingBkt == nil {
 			return fmt.Errorf("pending checking bucket not found during init")
 		}

@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"rcp/constants"
 	"strconv"
 
 	bolt "go.etcd.io/bbolt"
@@ -19,9 +20,9 @@ func (d *Database) getBucketByType(tx *bolt.Tx, accountType AccountType) (*bolt.
 	var bucketName []byte
 	switch accountType {
 	case CheckingAccount:
-		bucketName = checkingBucket
+		bucketName = constants.CheckingBucket
 	case SavingsAccount:
-		bucketName = savingsBucket
+		bucketName = constants.SavingsBucket
 	default:
 		return nil, fmt.Errorf("invalid account type: %s", accountType)
 	}
@@ -38,7 +39,7 @@ func (d *Database) GetBalance(accountID string, accountType AccountType) (int64,
 	var balance int64
 	keyBytes := []byte(accountID)
 
-	err := d.db.View(func(tx *bolt.Tx) error {
+	err := d.DB.View(func(tx *bolt.Tx) error {
 		b, err := d.getBucketByType(tx, accountType)
 		if err != nil {
 			return err
@@ -67,7 +68,6 @@ func (d *Database) GetBalance(accountID string, accountType AccountType) (int64,
 	return balance, nil
 }
 
-
 func (d *Database) PutBalance(accountID string, accountType AccountType, balance int64) error {
 	keyBytes := []byte(accountID)
 
@@ -75,7 +75,7 @@ func (d *Database) PutBalance(accountID string, accountType AccountType, balance
 	balanceString := strconv.FormatInt(balance, 10)
 	valueBytes := []byte(balanceString)
 
-	return d.db.Update(func(tx *bolt.Tx) error {
+	return d.DB.Update(func(tx *bolt.Tx) error {
 		b, err := d.getBucketByType(tx, accountType)
 		if err != nil {
 			return err
@@ -97,7 +97,7 @@ func (d *Database) ModifyBalance(accountID string, accountType AccountType, amou
 	}
 	keyBytes := []byte(accountID)
 
-	return d.db.Update(func(tx *bolt.Tx) error {
+	return d.DB.Update(func(tx *bolt.Tx) error {
 		b, err := d.getBucketByType(tx, accountType)
 		if err != nil {
 			return err

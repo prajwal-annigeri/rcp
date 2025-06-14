@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"log"
+	"rcp/constants"
 	"rcp/rcppb"
 	"strconv"
 	"time"
@@ -14,7 +15,7 @@ import (
 var printTimer bool
 
 func randomElectionTimeout(nodeNum int) time.Duration {
-	x := time.Duration(1000+nodeNum*500) * time.Millisecond
+	x := time.Duration(2000+nodeNum*500) * time.Millisecond
 	// x := time.Duration(250 + rand.Intn(2500)) * time.Millisecond
 	if !printTimer {
 		log.Println(x)
@@ -47,15 +48,16 @@ func (node *Node) monitorElectionTimer() {
 
 // function to send heartbeats. Will be running as a goroutine in the background.
 func (node *Node) sendHeartbeats() {
-
+	counter := 0
 	for {
+		counter += 1
 		// Send AppendEntry only if live and is leader
 		if node.Live && node.isLeader {
 			channelReadTimer := time.After(10 * time.Millisecond)
 			var logsToSend []*rcppb.LogEntry
 			loop:
 			for i := 1;; {
-				if len(logsToSend) > MaxLogsPerAppendEntry {
+				if len(logsToSend) > constants.MaxLogsPerAppendEntry {
 					break
 				}
 				select {
@@ -92,7 +94,7 @@ func (node *Node) sendHeartbeats() {
 			}
 
 			if len(logsToSend) > 0 {
-				log.Printf("LOGX Time to self append entry: %v", time.Since(begin1))
+				log.Printf("LOGX (%d) Time to self append entry (%d entries): %v", counter, len(logsToSend), time.Since(begin1))
 			}
 
 			// channel to collect all responses to AppendEntries
@@ -110,7 +112,7 @@ func (node *Node) sendHeartbeats() {
 			node.reachableSetLock.RUnlock()
 
 			if len(logsToSend) > 0 {
-				log.Printf("LOGX Time to send heartbeats to others: %v", time.Since(begin2))
+				log.Printf("LOGX (%d) Time to send heartbeats to others: %v", counter, time.Since(begin2))
 			}
 
 			begin3 := time.Now()
@@ -127,9 +129,9 @@ func (node *Node) sendHeartbeats() {
 				select {
 				case resp := <-responseChan:
 					successResponses += 1
-					if len(logsToSend) > 0 {
-						log.Printf("LOGX Success responses: %d, rep quorum: %d\n", successResponses, node.replicationQuorum)
-					}
+					// if len(logsToSend) > 0 {
+					// 	log.Printf("LOGX Success responses: %d, rep quorum: %d\n", successResponses, node.replicationQuorum)
+					// }
 					if resp.Term > node.currentTerm {
 						node.currentTerm = resp.Term
 						node.isLeader = false
@@ -142,7 +144,7 @@ func (node *Node) sendHeartbeats() {
 						// log.Printf("waiter here: %v", time.Since(now))
 						waitAfterCommit = time.After(10 * time.Millisecond)
 						if len(logsToSend) > 0 {
-							log.Printf("LOGX Setting shorter timer hopefully: %v", time.Since(begin3))
+							log.Printf("LOGX (%d) Committed Setting shorter timer hopefully: %v", counter, time.Since(begin3))
 						}
 					}
 				case <-waitTimer:
@@ -160,7 +162,7 @@ func (node *Node) sendHeartbeats() {
 			}
 
 		}
-		time.Sleep(10 * time.Millisecond)
+		// time.Sleep(2 * time.Millisecond)
 	}
 }
 
@@ -188,7 +190,7 @@ func (node *Node) constructAppendEntriesRequest(term int64, nodeId string) (*rcp
 		delay = delayRaw.(int64)
 	}
 	if len(entries) > 0 {
-		log.Printf("Append entries req to %s (%d): %v", nodeId, nextIndex, entries)
+		log.Printf("Append entries req to %s fromIndex: %d, number of entries: %d", nodeId, nextIndex, len(entries))
 	}
 	return &rcppb.AppendEntriesReq{
 		Term:         term,
@@ -210,7 +212,7 @@ func (node *Node) sendHeartbeatTo(client rcppb.RCPClient, nodeId string, respons
 	}
 
 	if len(req.Entries) > 0 {
-		log.Printf("Sending AppendEntries to %s: %v\n", nodeId, req)
+		log.Printf("Sending AppendEntries to %s with %d entries", nodeId, len(req.Entries))
 	}
 	resp, err := client.AppendEntries(context.Background(), req)
 	if err != nil {

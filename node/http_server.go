@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"rcp/rcppb"
+	"time"
+	"rcp/constants"
 )
 
 type StoreRequest struct {
@@ -51,23 +53,24 @@ func (node *Node) putHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	
+	log.Printf("Got put at %v", time.Since(node.beginTime))
 
 	key := r.URL.Query().Get("key")
 	value := r.URL.Query().Get("value")
 	bucket := r.URL.Query().Get("bucket")
 
-	log.Printf("Got %s, %s, %s", key, value, bucket)
+	// log.Printf("Got key %s, bucket: %s", key, bucket)
 	if key == "" || value == "" {
 		node.sendError(w, "'key' and 'value'required", http.StatusBadRequest)
 		return
 	}
 
 	if bucket == "" {
-		bucket = DefaultBucket
+		bucket = constants.DefaultBucket
 	}
 
-	log.Printf("Storing: Key=%s, Value=%s", key, value)
+	// log.Printf("Storing: Key=%s, Value=%s", key, value)
+	log.Printf("Storing: Key=%s, Bucket=%s", key, bucket)
 
 	_, err := node.Store(context.Background(), &rcppb.StoreRequest{Key: key, Value: value, Bucket: bucket})
 	if err != nil {
@@ -93,7 +96,7 @@ func (node *Node) getHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if bucket == "" {
-		bucket = DefaultBucket
+		bucket = constants.DefaultBucket
 	}
 
 	value, err := node.Get(context.Background(), &rcppb.GetValueReq{Key: key, Bucket: bucket})
@@ -121,7 +124,7 @@ func (node *Node) deleteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if bucket == "" {
-		bucket = DefaultBucket
+		bucket = constants.DefaultBucket
 	}
 
 	_, err := node.Delete(context.Background(), &rcppb.DeleteReq{Key: key, Bucket: bucket})

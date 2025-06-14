@@ -8,8 +8,8 @@ import (
 )
 
 func (d *Database) PutKV(key, value, bucketName string) error {
-	log.Printf("Storing %s: %s to bucket %s\n", key, value, bucketName)
-	return d.db.Update(func(tx *bolt.Tx) error {
+	log.Printf("Storing key %s to bucket %s\n", key, bucketName)
+	return d.DB.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketName))
 		if b == nil {
 			log.Printf("Bucket %s does not exist", bucketName)
@@ -22,7 +22,7 @@ func (d *Database) PutKV(key, value, bucketName string) error {
 func (d *Database) GetKV(key, bucketName string) (string, error) {
 	var value string
 	log.Printf("Getting key '%s' from bucket '%s'", key, bucketName)
-	err := d.db.View(func(tx *bolt.Tx) error {
+	err := d.DB.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketName))
 		if b == nil {
 			log.Printf("Bucket %s does not exist", bucketName)
@@ -43,7 +43,7 @@ func (d *Database) GetKV(key, bucketName string) (string, error) {
 
 func (d *Database) DeleteKV(key, bucketName string) error {
 	log.Printf("Deleting key: %s bucket: %s", key, bucketName)
-	return d.db.Update(func(tx *bolt.Tx) error {
+	return d.DB.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketName))
 		if b == nil {
 			return fmt.Errorf("bucket %s does not exist", bucketName)

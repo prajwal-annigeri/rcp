@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"rcp/constants"
 	"time"
 
 	bolt "go.etcd.io/bbolt"
@@ -25,7 +26,7 @@ const (
 func (d *Database) Lock(ctx context.Context, accountID string) error {
 	keyBytes := []byte(accountID)
 	pollInterval := defaultLockPollInterval // Could be made configurable
-	
+
 	for {
 		// Check for context cancellation before potentially blocking operations
 		select {
@@ -37,8 +38,8 @@ func (d *Database) Lock(ctx context.Context, accountID string) error {
 
 		// Attempt to acquire the lock within a single atomic transaction
 		var acquired bool
-		err := d.db.Update(func(tx *bolt.Tx) error {
-			b := tx.Bucket(locksBucket)
+		err := d.DB.Update(func(tx *bolt.Tx) error {
+			b := tx.Bucket(constants.LocksBucket)
 			if b == nil {
 				return fmt.Errorf("locks bucket not found during lock attempt")
 			}
@@ -95,8 +96,8 @@ func (d *Database) Lock(ctx context.Context, accountID string) error {
 func (d *Database) Unlock(accountID string) error {
 	keyBytes := []byte(accountID)
 	log.Printf("Unlocking %s", accountID)
-	return d.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket(locksBucket)
+	return d.DB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(constants.LocksBucket)
 
 		// Delete the key associated with the account ID.
 		// BoltDB's Delete does not return an error if the key doesn't exist.

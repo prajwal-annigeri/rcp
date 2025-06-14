@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -9,7 +10,9 @@ import (
 	"rcp/rcppb"
 	"sync"
 	"time"
+	"rcp/constants"
 
+	bolt "go.etcd.io/bbolt"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -91,35 +94,97 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 	}, nil
 }
 
+// func (node *Node) insertLogs(appendEntryReq *rcppb.AppendEntriesReq) error {
+// 	if len(appendEntryReq.Entries) == 0 {
+// 		return nil
+// 	}
+
+// 	currIndex := appendEntryReq.PrevLogIndex + 1
+// 	lastEntryTerm := appendEntryReq.Term
+
+// 	node.db.Update
+// 	for _, entry := range appendEntryReq.Entries {
+// 		// log.Printf("Putting entry: %v\n", entry)
+// 		failedNode, recoveredNode, err := node.db.PutLogAtIndex(currIndex, entry)
+
+// 		if err != nil {
+// 			return err
+// 		}
+// 		if failedNode != "" {
+// 			node.removeFromFailureSet(failedNode)
+// 		} else if recoveredNode != "" {
+// 			node.removeFromRecoverySet(recoveredNode)
+// 		}
+// 		node.lastIndex = currIndex
+// 		lastEntryTerm = entry.Term
+// 		currIndex += 1
+// 	}
+
+// 	node.lastTerm = lastEntryTerm
+// 	return nil
+// }
+
+
 func (node *Node) insertLogs(appendEntryReq *rcppb.AppendEntriesReq) error {
 	if len(appendEntryReq.Entries) == 0 {
 		return nil
 	}
 
-	log.Printf("Inserting logs: %v\n", appendEntryReq.Entries)
 	currIndex := appendEntryReq.PrevLogIndex + 1
 	lastEntryTerm := appendEntryReq.Term
-	// var err error
-	for _, entry := range appendEntryReq.Entries {
-		log.Printf("Putting entry: %v\n", entry)
-		failedNode, recoveredNode, err := node.db.PutLogAtIndex(currIndex, entry)
 
-		if err != nil {
-			return err
+	return node.db.DB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(constants.LogsBucket)
+		if b == nil {
+			return errors.New("bucket not found 'logs'")
 		}
-		if failedNode != "" {
-			node.removeFromFailureSet(failedNode)
-		} else if recoveredNode != "" {
-			node.removeFromRecoverySet(recoveredNode)
-		}
-		node.lastIndex = currIndex
-		lastEntryTerm = entry.Term
-		currIndex += 1
-	}
+		for _, entry := range appendEntryReq.Entries {
+			// Lookup existing log at index
+			key := fmt.Appendf(nil, "%d", currIndex)
 
-	node.lastTerm = lastEntryTerm
-	return nil
+			if _, ok := node.possibleFailureOrRecoveryIndex.Load(fmt.Sprintf("%d", currIndex)); ok {
+				logBytes := b.Get(key)
+
+				// Track removed nodes
+				if logBytes != nil {
+					var existingEntry rcppb.LogEntry
+					err := json.Unmarshal(logBytes, &existingEntry)
+					if err != nil {
+						return fmt.Errorf("could not deserialize existing log at index %d: %v", currIndex, err)
+					}
+	
+					if existingEntry.LogType == "failure" {
+						node.removeFromFailureSet(existingEntry.NodeId)
+					} else if existingEntry.LogType == "recovery" {
+						node.removeFromRecoverySet(existingEntry.NodeId)
+					}
+				}
+			}
+			
+
+			// Marshal and put new entry
+			if entry.LogType == "failure" || entry.LogType == "success" {
+				go node.possibleFailureOrRecoveryIndex.Store(fmt.Sprintf("%d", currIndex), "")
+			}
+			newLogBytes, err := json.Marshal(entry)
+			if err != nil {
+				return fmt.Errorf("could not marshal new log entry at index %d: %v", currIndex, err)
+			}
+			err = b.Put(key, newLogBytes)
+			if err != nil {
+				return fmt.Errorf("failed to write log at index %d: %v", currIndex, err)
+			}
+
+			node.lastIndex = currIndex
+			lastEntryTerm = entry.Term
+			currIndex++
+		}
+
+		node.lastTerm = lastEntryTerm
+		return nil
+	})
 }
+
 
 func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.RequestVoteReq) (*rcppb.RequestVoteResponse, error) {
 	if !node.Live {
@@ -191,10 +256,11 @@ func (node *Node) Store(ctx context.Context, KV *rcppb.StoreRequest) (*wrappersp
 	}
 
 	if KV.Bucket == "" {
-		KV.Bucket = DefaultBucket
+		KV.Bucket = constants.DefaultBucket
 	}
 
-	log.Printf("Received data: Key=%s, Value=%s, Bucket=%s", KV.Key, KV.Value, KV.Bucket)
+	// log.Printf("Received data: Key=%s, Value=%s, Bucket=%s", KV.Key, KV.Value, KV.Bucket)
+	log.Printf("Received data: Key=%s, Bucket=%s", KV.Key, KV.Bucket)
 
 	if !node.isLeader {
 		leader, ok := node.votedFor.Load(node.currentTerm)
@@ -204,7 +270,7 @@ func (node *Node) Store(ctx context.Context, KV *rcppb.StoreRequest) (*wrappersp
 		}
 		grpcClient, ok := node.ClientMap[leader.(string)]
 		if ok {
-			log.Printf("Forwarded req with key: %s, value: %s, bucket: %s to leader: %s\n", KV.Key, KV.Value, KV.Bucket, leader.(string))
+			log.Printf("Forwarded req with key: %s, bucket: %s to leader: %s\n", KV.Key, KV.Bucket, leader.(string))
 			return grpcClient.Store(context.Background(), &rcppb.StoreRequest{Key: KV.Key, Value: KV.Value, Bucket: KV.Bucket})
 		}
 	} else {
@@ -225,7 +291,7 @@ func (node *Node) Store(ctx context.Context, KV *rcppb.StoreRequest) (*wrappersp
 		select {
 		case <-callbackChannel:
 			log.Println("Got callback")
-			log.Printf("Time: %v", time.Since(begin))
+			log.Printf("Time to get callback after put: %v", time.Since(begin))
 			return &wrapperspb.BoolValue{Value: true}, nil
 		case <-time.After(20 * time.Second):
 			log.Printf("TIMED OUT Store")
@@ -237,7 +303,7 @@ func (node *Node) Store(ctx context.Context, KV *rcppb.StoreRequest) (*wrappersp
 
 func (node *Node) Get(ctx context.Context, req *rcppb.GetValueReq) (*rcppb.GetValueResponse, error) {
 	if req.Bucket == "" {
-		req.Bucket = DefaultBucket
+		req.Bucket = constants.DefaultBucket
 	}
 	value, err := node.db.GetKV(req.Key, req.Bucket)
 
@@ -254,7 +320,7 @@ func (node *Node) Delete(ctx context.Context, req *rcppb.DeleteReq) (*wrapperspb
 	}
 
 	if req.Bucket == "" {
-		req.Bucket = DefaultBucket
+		req.Bucket = constants.DefaultBucket
 	}
 
 	log.Printf("Received delete: Key=%s, Bucket=%s", req.Key, req.Bucket)
@@ -286,7 +352,7 @@ func (node *Node) Delete(ctx context.Context, req *rcppb.DeleteReq) (*wrapperspb
 		select {
 		case <-callbackChannel:
 			log.Println("Got callback")
-			log.Printf("Time: %v", time.Since(begin))
+			log.Printf("Time to get callback after delete: %v", time.Since(begin))
 			return &wrapperspb.BoolValue{Value: true}, nil
 		case <-time.After(20 * time.Second):
 			log.Printf("TIMED OUT Delete key: %s, bucket: %s", req.Key, req.Bucket)

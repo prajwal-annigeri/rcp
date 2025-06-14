@@ -23,33 +23,35 @@ type Node struct {
 	currentTerm int64
 
 	// TODO: persist votedFor on disk
-	votedFor          sync.Map
-	db                *db.Database
-	commitIndex       int64
-	execIndex         int64
-	lastApplied       int64
-	nextIndex         sync.Map
-	matchIndex        map[string]int
-	lastIndex         int64
-	lastTerm          int64
-	Id                string            `json:"id"`
-	Port              string            `json:"port"`
-	HttpPort          string            `json:"http_port"`
-	NodeMap           map[string]string `json:"nodeMap"`
-	ConnMap           map[string]*grpc.ClientConn
-	ClientMap         map[string]rcppb.RCPClient
-	Live              bool
-	DBCloseFunc       func() error
-	K                 int
-	isLeader          bool
-	isCandidate       bool
-	electionTimer     *time.Timer
-	currAlive         int
-	serverStatusMap   sync.Map
-	logBufferChan     chan *rcppb.LogEntry // Read from HTTP request into this buffer
-	mutex             sync.Mutex
-	replicationQuorum int
-	protocol          string
+	votedFor                       sync.Map
+	db                             *db.Database
+	commitIndex                    int64
+	execIndex                      int64
+	lastApplied                    int64
+	nextIndex                      sync.Map
+	matchIndex                     map[string]int
+	lastIndex                      int64
+	lastTerm                       int64
+	Id                             string            `json:"id"`
+	Port                           string            `json:"port"`
+	HttpPort                       string            `json:"http_port"`
+	NodeMap                        map[string]string `json:"nodeMap"`
+	ConnMap                        map[string]*grpc.ClientConn
+	ClientMap                      map[string]rcppb.RCPClient
+	Live                           bool
+	DBCloseFunc                    func() error
+	K                              int
+	isLeader                       bool
+	isCandidate                    bool
+	electionTimer                  *time.Timer
+	currAlive                      int
+	serverStatusMap                sync.Map
+	logBufferChan                  chan *rcppb.LogEntry // Read from HTTP request into this buffer
+	mutex                          sync.Mutex
+	replicationQuorum              int
+	protocol                       string
+	beginTime                      time.Time
+	possibleFailureOrRecoveryIndex sync.Map
 
 	/// The below hash sets are used to prevent duplicate failure/recovery logs from being inserted.
 	//
@@ -131,6 +133,7 @@ func NewNode(thisNodeId, protocol string) (*Node, error) {
 		failureLogWaitingSet:  make(map[string]struct{}),
 		recoveryLogWaitingSet: make(map[string]struct{}),
 		reachableNodes:        make(map[string]struct{}),
+		beginTime:             time.Now(),
 	}
 
 	if protocol == "rcp" {

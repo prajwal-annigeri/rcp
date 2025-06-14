@@ -55,7 +55,7 @@ func (node *Node) doCallback(index int64) {
 	if err == nil {
 		callbackChannelRaw, ok := node.callbackChannelMap.Load(logEntry.CallbackChannelId)
 		if !ok {
-			log.Println("no callback channel")
+			// log.Println("no callback channel")
 			return
 		}
 		callbackChannel := callbackChannelRaw.(chan struct{})
