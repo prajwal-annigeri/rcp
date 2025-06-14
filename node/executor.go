@@ -1,9 +1,14 @@
 package node
 
 import (
-	"log"
+	"encoding/json"
+	"fmt"
+	"rcp/constants"
 	"rcp/db"
+	"rcp/rcppb"
 	"time"
+
+	bolt "go.etcd.io/bbolt"
 )
 
 // The executor function, runs as a goroutine
@@ -37,30 +42,61 @@ func (node *Node) executor() {
 	}
 }
 
-
+// Performs callback to let client know log entry is committed
 func (node *Node) callbacker() {
 	currIndex := int64(-1)
 	for {
-		if node.commitIndex > currIndex {
-			currIndex += 1
-			go node.doCallback(currIndex)
+		currCommit := node.commitIndex
+		if currIndex == currCommit {
+			time.Sleep(2 * time.Millisecond)
+			continue
 		}
-		time.Sleep(2 * time.Millisecond)
+		node.db.DB.View(func(tx *bolt.Tx) error {
+			b := tx.Bucket(constants.LogsBucket)
+			for currIndex < currCommit {
+				currIndex++
+				logBytes := b.Get(fmt.Appendf(nil, "%d", currIndex))
+				if logBytes == nil {
+					return fmt.Errorf("callbacker(): error empty log at index %d", currIndex)
+				}
+				var logEntry rcppb.LogEntry
+				err := json.Unmarshal(logBytes, &logEntry)
+				if err != nil {
+					return err
+				}
+				callbackChannelRaw, ok := node.callbackChannelMap.Load(logEntry.CallbackChannelId)
+				if !ok {
+					// log.Println("no callback channel for index %d", currIndex)
+					return nil
+				}
+				callbackChannel := callbackChannelRaw.(chan struct{})
+				callbackChannel <- struct{}{}
+				close(callbackChannel)
+			}
+			
+			return nil
+
+		})
+		// if node.commitIndex > currIndex {
+		// 	currIndex += 1
+		// 	go node.doCallback(currIndex)
+		// }
+		// time.Sleep(2 * time.Millisecond)
 	}
 }
 
-func (node *Node) doCallback(index int64) {
-	begin := time.Now()
-	logEntry, err := node.db.GetLogAtIndex(index)
-	if err == nil {
-		callbackChannelRaw, ok := node.callbackChannelMap.Load(logEntry.CallbackChannelId)
-		if !ok {
-			// log.Println("no callback channel")
-			return
-		}
-		callbackChannel := callbackChannelRaw.(chan struct{})
-		callbackChannel <- struct{}{}
-		log.Printf("Time for callback: %v", time.Since(begin))
-		close(callbackChannel)
-	}
-}
+// func (node *Node) doCallback(index int64) {
+// 	begin := time.Now()
+// 	logEntry, err := node.db.GetLogAtIndex(index)
+// 	if err == nil {
+// 		callbackChannelRaw, ok := node.callbackChannelMap.Load(logEntry.CallbackChannelId)
+// 		if !ok {
+// 			// log.Println("no callback channel")
+// 			return
+// 		}
+// 		callbackChannel := callbackChannelRaw.(chan struct{})
+// 		callbackChannel <- struct{}{}
+// 		log.Printf("Time for callback: %v", time.Since(begin))
+// 		close(callbackChannel)
+// 	}
+// }
