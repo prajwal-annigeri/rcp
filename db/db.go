@@ -16,6 +16,8 @@ type Database struct {
 	DB *bolt.DB
 }
 
+
+// Initialize boltDB
 func InitDatabase(dbPath string) (db *Database, closeFunc func() error, err error) {
 	boltDB, err := bolt.Open(dbPath, 0600, nil)
 	if err != nil {
@@ -38,6 +40,8 @@ func InitDatabase(dbPath string) (db *Database, closeFunc func() error, err erro
 	return db, boltDB.Close, nil
 }
 
+
+// Create Buckets
 func (d *Database) createBuckets() error {
 	return d.DB.Update(func(tx *bolt.Tx) error {
 		bucketsToCreate := [][]byte{

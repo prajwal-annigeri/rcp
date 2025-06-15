@@ -2,7 +2,7 @@ package constants
 
 const (
 	// HeartbeatInterval = 100 * time.Second
-	MaxLogsPerAppendEntry = 100
+	MaxLogsPerAppendEntry = 1000
 	DefaultBucket = "store"
 	
 )

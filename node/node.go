@@ -26,6 +26,8 @@ type Node struct {
 	votedFor                       sync.Map
 	db                             *db.Database
 	commitIndex                    int64
+
+	// Index upto where logs have been executed (inclusive)
 	execIndex                      int64
 	lastApplied                    int64
 	nextIndex                      sync.Map

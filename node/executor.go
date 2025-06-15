@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"rcp/constants"
-	"rcp/db"
+	// "rcp/db"
 	"rcp/rcppb"
 	"time"
 
@@ -13,31 +13,76 @@ import (
 
 // The executor function, runs as a goroutine
 func (node *Node) executor() {
+
 	for {
-		if node.commitIndex > node.execIndex {
-			logEntry, err := node.db.GetLogAtIndex(node.execIndex + 1)
-			if err == nil {
-				if logEntry.LogType == "store" {
-					node.db.PutKV(logEntry.Key, logEntry.Value, logEntry.Bucket)
-				} else if logEntry.LogType == "delete" {
-					node.db.DeleteKV(logEntry.Key, logEntry.Bucket)
-				} else if logEntry.LogType == "failure" {
-					node.currAlive -= 1
-					node.serverStatusMap.Store(logEntry.NodeId, false)
-					go node.removeFromFailureSet(logEntry.NodeId)
-				} else if logEntry.LogType == "recovery" {
-					node.currAlive += 1
-					node.serverStatusMap.Store(logEntry.NodeId, true)
-					go node.removeFromRecoverySet(logEntry.NodeId)
-				} else if logEntry.LogType == "bank" {
-					node.db.ModifyBalance(logEntry.Transaction1.AccountId, db.AccountType(logEntry.Transaction1.AccountType), logEntry.Transaction1.Amount)
-					if logEntry.Transaction2 != nil {
-						node.db.ModifyBalance(logEntry.Transaction2.AccountId, db.AccountType(logEntry.Transaction2.AccountType), logEntry.Transaction2.Amount)
+		currCommit := node.commitIndex
+		if currCommit > node.execIndex {
+			
+			node.db.DB.Update(func(tx *bolt.Tx) error {
+				logsBkt := tx.Bucket(constants.LogsBucket)
+				for ; node.execIndex < currCommit; {
+					logBytes := logsBkt.Get(fmt.Appendf(nil, "%d", node.execIndex + 1))
+					if logBytes == nil {
+						return fmt.Errorf("executor() no log at index: %d", node.execIndex + 1)
 					}
+					var logEntry rcppb.LogEntry
+					err := json.Unmarshal(logBytes, &logEntry)
+					if err != nil {
+						return fmt.Errorf("could not deserialize logbytes of index %d into logentry: %v", node.execIndex + 1, err)
+					}
+
+					switch logEntry.LogType {
+					case "store":
+						kvBkt := tx.Bucket([]byte(logEntry.Bucket))
+						if kvBkt == nil {
+							return fmt.Errorf("executor() index %d, no bucket %s", node.execIndex + 1, logEntry.Bucket)
+						}
+						kvBkt.Put([]byte(logEntry.Key), []byte(logEntry.Value))
+					case "delete":
+						kvBkt := tx.Bucket([]byte(logEntry.Bucket))
+						if kvBkt == nil {
+							return fmt.Errorf("executor() index %d, no bucket %s", node.execIndex + 1, logEntry.Bucket)
+						}
+						kvBkt.Delete([]byte(logEntry.Key))
+					case "failure":
+						node.currAlive -= 1
+						node.serverStatusMap.Store(logEntry.NodeId, false)
+						go node.removeFromFailureSet(logEntry.NodeId)
+					case "recovery":
+						node.currAlive += 1
+						node.serverStatusMap.Store(logEntry.NodeId, true)
+						go node.removeFromRecoverySet(logEntry.NodeId)
+					}
+
+					node.execIndex++
 				}
-				node.execIndex += 1
-			}
+				return nil
+			})
 		}
+		// if node.commitIndex > node.execIndex {
+		// 	logEntry, err := node.db.GetLogAtIndex(node.execIndex + 1)
+		// 	if err == nil {
+		// 		if logEntry.LogType == "store" {
+		// 			node.db.PutKV(logEntry.Key, logEntry.Value, logEntry.Bucket)
+		// 		} else if logEntry.LogType == "delete" {
+		// 			node.db.DeleteKV(logEntry.Key, logEntry.Bucket)
+		// 		} else if logEntry.LogType == "failure" {
+		// 			node.currAlive -= 1
+		// 			node.serverStatusMap.Store(logEntry.NodeId, false)
+		// 			go node.removeFromFailureSet(logEntry.NodeId)
+		// 		} else if logEntry.LogType == "recovery" {
+		// 			node.currAlive += 1
+		// 			node.serverStatusMap.Store(logEntry.NodeId, true)
+		// 			go node.removeFromRecoverySet(logEntry.NodeId)
+		// 		} else if logEntry.LogType == "bank" {
+		// 			node.db.ModifyBalance(logEntry.Transaction1.AccountId, db.AccountType(logEntry.Transaction1.AccountType), logEntry.Transaction1.Amount)
+		// 			if logEntry.Transaction2 != nil {
+		// 				node.db.ModifyBalance(logEntry.Transaction2.AccountId, db.AccountType(logEntry.Transaction2.AccountType), logEntry.Transaction2.Amount)
+		// 			}
+		// 		}
+		// 		node.execIndex += 1
+		// 	}
+		// }
 		time.Sleep(2 * time.Millisecond)
 	}
 }
