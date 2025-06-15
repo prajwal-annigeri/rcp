@@ -9,7 +9,17 @@ message LogEntry {
     string nodeId = 2;
     string key = 3;
     string value = 4;
-    int64 term = 5;
+    Transaction transaction1 = 5;
+    Transaction transaction2 = 6;
+    int64 term = 7;
+    string callbackChannelId = 8;
+    string bucket = 9;
+}
+
+message Transaction {
+    string accountId = 1;
+    int64 amount = 2;
+    string accountType = 3;
 }
 
 message AppendEntriesReq {
@@ -40,13 +50,20 @@ message RequestVoteResponse {
     bool voteGranted = 2;
 }
 
-message KV {
+message StoreRequest {
     string key = 1;
     string value = 2;
+    string bucket = 3;
 }
 
 message GetValueReq {
     string key = 1;
+    string bucket = 2;
+}
+
+message DeleteReq {
+    string key = 1;
+    string bucket = 2;
 }
 
 message GetValueResponse {
@@ -54,14 +71,63 @@ message GetValueResponse {
     string value = 2;
 }
 
-message StoreKVResponse {
-    bool success = 1;
+message DepositCheckingRequest {
+    string accountId = 1;
+    int64 amount = 2;
+}
+
+message SendPaymentRequest {
+    string accountIdFrom = 1;
+    string accountIdTo = 2;
+    int64 amount = 3;
+}
+
+message WriteCheckRequest {
+    string accountId = 1;
+    int64 amount = 2;
+}
+
+message GetBalanceRequest {
+    string accountId = 1;
+}
+
+message GetBalanceResponse {
+    int64 checkingBalance = 1;
+    int64 savingsBalance = 2;
+}
+
+message AmalgamateRequest {
+    string accountIdFrom = 1;
+    string accountIdTo = 2;
+}
+
+message PartitionReq {
+    repeated string reachableNodes = 1;
+}
+
+message DelayRequest {
+    string nodeId = 1;
+    int64 delay = 2;
+}
+
+message TransactSavingsRequest {
+    string accountId = 1;
+    int64 amount = 2;
 }
 
 service RCP {
     rpc AppendEntries(AppendEntriesReq) returns (AppendEntriesResponse) {}
     rpc RequestVote (RequestVoteReq) returns (RequestVoteResponse) {}
-    rpc Store(KV) returns (StoreKVResponse) {}
+    rpc Store(StoreRequest) returns (google.protobuf.BoolValue) {}
+    rpc Delete(DeleteReq) returns (google.protobuf.BoolValue) {}
     rpc Get(GetValueReq) returns (GetValueResponse) {}
     rpc SetStatus(google.protobuf.BoolValue) returns (google.protobuf.BoolValue) {}
+    rpc Partition(PartitionReq) returns (google.protobuf.BoolValue) {}
+    rpc Delay(DelayRequest) returns (google.protobuf.BoolValue) {}
+    rpc DepositChecking(DepositCheckingRequest) returns (google.protobuf.BoolValue) {}
+    rpc SendPayment(SendPaymentRequest) returns (google.protobuf.BoolValue) {}
+    rpc WriteCheck(WriteCheckRequest) returns (google.protobuf.BoolValue) {}
+    rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse) {}
+    rpc Amalgamate(AmalgamateRequest) returns (google.protobuf.BoolValue) {}
+    rpc TransactSavings(TransactSavingsRequest) returns (google.protobuf.BoolValue) {}
 }

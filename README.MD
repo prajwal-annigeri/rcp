@@ -1,4 +1,4 @@
-# Reconfigurable Consensus Protocols
+# Reconfigurable Consensus Protocol
 
 ## Setup locally
 

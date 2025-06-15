@@ -23,30 +23,37 @@ type Node struct {
 	currentTerm int64
 
 	// TODO: persist votedFor on disk
-	votedFor        sync.Map
-	db              *db.Database
-	commitIndex     int64
-	execIndex       int64
-	lastApplied     int64
-	nextIndex       sync.Map
-	matchIndex      map[string]int
-	lastIndex       int64
-	lastTerm        int64
-	Id              string            `json:"id"`
-	Port            string            `json:"port"`
-	HttpPort        string            `json:"http_port"`
-	NodeMap         map[string]string `json:"nodeMap"`
-	ConnMap         map[string]*grpc.ClientConn
-	ClientMap       map[string]rcppb.RCPClient
-	Live            bool
-	DBCloseFunc     func() error
-	K               int
-	isLeader        bool
-	isCandidate     bool
-	electionTimer   *time.Timer
-	currAlive       int64
-	serverStatusMap sync.Map
-	logBufferChan   chan *rcppb.LogEntry // Read from HTTP request into this buffer
+	votedFor                       sync.Map
+	db                             *db.Database
+	commitIndex                    int64
+
+	// Index upto where logs have been executed (inclusive)
+	execIndex                      int64
+	lastApplied                    int64
+	nextIndex                      sync.Map
+	matchIndex                     map[string]int
+	lastIndex                      int64
+	lastTerm                       int64
+	Id                             string            `json:"id"`
+	Port                           string            `json:"port"`
+	HttpPort                       string            `json:"http_port"`
+	NodeMap                        map[string]string `json:"nodeMap"`
+	ConnMap                        map[string]*grpc.ClientConn
+	ClientMap                      map[string]rcppb.RCPClient
+	Live                           bool
+	DBCloseFunc                    func() error
+	K                              int
+	isLeader                       bool
+	isCandidate                    bool
+	electionTimer                  *time.Timer
+	currAlive                      int
+	serverStatusMap                sync.Map
+	logBufferChan                  chan *rcppb.LogEntry // Read from HTTP request into this buffer
+	mutex                          sync.Mutex
+	replicationQuorum              int
+	protocol                       string
+	beginTime                      time.Time
+	possibleFailureOrRecoveryIndex sync.Map
 
 	/// The below hash sets are used to prevent duplicate failure/recovery logs from being inserted.
 	//
@@ -64,12 +71,13 @@ type Node struct {
 	recoverySetLock       sync.Mutex
 
 	// reachable nodes set to simulate partitions
-	reachableNodes   map[string]struct{}
-	reachableSetLock sync.RWMutex
+	reachableNodes     map[string]struct{}
+	reachableSetLock   sync.RWMutex
+	callbackChannelMap sync.Map
 
 	failedAppendEntries sync.Map
-	replicatedCount     sync.Map
-	delays              sync.Map
+	// replicatedCount     sync.Map
+	delays sync.Map
 }
 
 // struct to read in the config file
@@ -79,7 +87,7 @@ type ConfigFile struct {
 }
 
 // constructor
-func NewNode(thisNodeId string) (*Node, error) {
+func NewNode(thisNodeId, protocol string) (*Node, error) {
 	// reads config file
 	mapJson, err := os.Open("nodes.json")
 	if err != nil {
@@ -123,11 +131,27 @@ func NewNode(thisNodeId string) (*Node, error) {
 		Live:                  true,
 		ClientMap:             make(map[string]rcppb.RCPClient),
 		electionTimer:         time.NewTimer(2 * time.Second),
-		logBufferChan:         make(chan *rcppb.LogEntry),
+		logBufferChan:         make(chan *rcppb.LogEntry, 10000),
 		failureLogWaitingSet:  make(map[string]struct{}),
 		recoveryLogWaitingSet: make(map[string]struct{}),
 		reachableNodes:        make(map[string]struct{}),
+		beginTime:             time.Now(),
 	}
+
+	if protocol == "rcp" {
+		newNode.replicationQuorum = config.K + 1
+		newNode.protocol = "rcp"
+	} else if protocol == "raft" {
+		newNode.replicationQuorum = int(len(nodes)/2) + 1
+		newNode.protocol = "raft"
+	} else if protocol == "fraft" {
+		newNode.replicationQuorum = config.K + 1
+		newNode.protocol = "fraft"
+	} else {
+		log.Fatalf("Invalid protocol: %s", protocol)
+	}
+
+	log.Printf("Replication Quorum size: %d", newNode.replicationQuorum)
 
 	// go through all the nodes defined in config file and map them to their gRPC ports
 	for _, node := range nodes {
@@ -140,11 +164,11 @@ func NewNode(thisNodeId string) (*Node, error) {
 		newNode.serverStatusMap.Store(node.Id, true)
 		newNode.reachableNodes[node.Id] = struct{}{}
 		newNode.failedAppendEntries.Store(thisNodeId, 0)
-		newNode.delays.Store(node.Id, 0)
+		newNode.delays.Store(node.Id, int64(0))
 	}
 
 	// initialize current alive to number of nodes in the config file
-	newNode.currAlive = int64(len(newNode.NodeMap))
+	newNode.currAlive = len(newNode.NodeMap)
 	if newNode.NodeMap[thisNodeId] == "" {
 		log.Fatalf("No port specified for ID: %s in config JSON", thisNodeId)
 	}
@@ -158,7 +182,7 @@ func (node *Node) Start() {
 
 	// starts HTTP server used by clients to interact with server
 	go node.startHttpServer()
-	time.Sleep(5 * time.Second)
+	time.Sleep(1 * time.Second)
 
 	// establish gRPC connections with ohter nodes
 	node.establishConns()
@@ -174,6 +198,8 @@ func (node *Node) Start() {
 
 	//start executor goroutine which applies logs to state machine
 	go node.executor()
+
+	go node.callbacker()
 
 	for {
 		printMenu()
@@ -199,6 +225,10 @@ func (node *Node) Start() {
 // request votes from other nodes on election timer expiry
 func (node *Node) requestVotes() {
 	log.Printf("Requesting votes\n")
+	electionQuorum := node.currAlive - node.K
+	if node.protocol == "raft" {
+		electionQuorum = (len(nodes) / 2) + 1
+	}
 	node.currentTerm += 1
 
 	// vote for self
@@ -211,11 +241,17 @@ func (node *Node) requestVotes() {
 	votesChan := make(chan *rcppb.RequestVoteResponse, len(node.ClientMap))
 
 	// send RequestVote to every other node
-	for nodeId, client := range node.ClientMap {
+	node.reachableSetLock.RLock()
+	for nodeId := range node.reachableNodes {
+		client, ok := node.ClientMap[nodeId]
+		if !ok {
+			continue
+		}
 		go node.sendRequestVote(client, term, votesChan, nodeId)
 	}
+	node.reachableSetLock.RUnlock()
 
-	voteCount := int64(1) // initialized to 1 because already voted for self
+	voteCount := 1 // initialized to 1 because already voted for self
 
 	// initialize timer to wait for votes
 	// TODO: refine timer duration
@@ -233,7 +269,7 @@ func (node *Node) requestVotes() {
 			}
 			if voteResp != nil && voteResp.VoteGranted {
 				voteCount += 1
-				if voteCount >= node.currAlive-int64(node.K) {
+				if voteCount >= electionQuorum {
 					node.isLeader = true
 					node.isCandidate = false
 					node.electionTimer.Stop()
@@ -259,11 +295,11 @@ func (node *Node) initNextIndex() {
 func (node *Node) sendRequestVote(client rcppb.RCPClient, term int64, votesChan chan *rcppb.RequestVoteResponse, nodeId string) {
 	log.Printf("Sending RequestVote to %s\n", nodeId)
 	delayRaw, ok := node.delays.Load(nodeId)
-	var delay int
+	var delay int64
 	if !ok {
 		delay = 0
 	} else {
-		delay = delayRaw.(int)
+		delay = delayRaw.(int64)
 	}
 	resp, _ := client.RequestVote(context.Background(), &rcppb.RequestVoteReq{
 		Term:         term,

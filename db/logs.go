@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"rcp/constants"
 	"rcp/rcppb"
 
 	bolt "go.etcd.io/bbolt"
@@ -19,8 +20,8 @@ const (
 
 func (d *Database) GetLogAtIndex(index int64) (*rcppb.LogEntry, error) {
 	var logBytes []byte
-	d.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket(logsBucket)
+	d.DB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(constants.LogsBucket)
 		logBytes = b.Get(fmt.Appendf(nil, "%d", index))
 		return nil
 	})
@@ -35,13 +36,12 @@ func (d *Database) GetLogAtIndex(index int64) (*rcppb.LogEntry, error) {
 	}
 
 	// log.Printf("Log at index %d: %v\n", index, &logEntry)
-
 	return &logEntry, nil
 }
 
 func (d *Database) DeleteLogsStartingFromIndex(index int64) error {
-	return d.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket(logsBucket)
+	return d.DB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(constants.LogsBucket)
 
 		for i := index; ; i++ {
 			key := fmt.Appendf(nil, "%d", i)
@@ -60,23 +60,9 @@ func (d *Database) DeleteLogsStartingFromIndex(index int64) error {
 	})
 }
 
-// func (d *Database) InsertLogs(req *rcppb.AppendEntriesReq) error {
-// 	currIndex := req.PrevLogIndex + 1
-// 	var err error
-// 	for _, entry := range req.Entries {
-// 		log.Printf("Putting entry: %v\n", entry)
-// 		err = d.PutLogAtIndex(currIndex, entry)
-// 		if err != nil {
-// 			return err
-// 		}
-// 		currIndex += 1
-// 	}
-// 	return nil
-// }
-
 func (d *Database) PrintAllLogs() error {
-	return d.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket(logsBucket)
+	return d.DB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(constants.LogsBucket)
 
 		for i := 0; ; i++ {
 			key := fmt.Appendf(nil, "%d", i)
@@ -85,15 +71,22 @@ func (d *Database) PrintAllLogs() error {
 				break
 			}
 
-			log.Printf("%s %s\n", key, string(valueBytes))
+			var logEntry *rcppb.LogEntry
+			err := json.Unmarshal(valueBytes, &logEntry)
+			if err != nil {
+				return fmt.Errorf("could not deserialize logbytes into logentry: %v", err)
+			}
+
+			// log.Printf("%s %s\n", key, string(valueBytes))
+			log.Printf("%d. Key: %s Bucket: %s\n", i+1, logEntry.Key, logEntry.Bucket)
 		}
 		return nil
 	})
 }
 
 func (d *Database) PrintAllLogsUnordered() error {
-	return d.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket(logsBucket)
+	return d.DB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(constants.LogsBucket)
 
 		c := b.Cursor()
 		for k, v := c.First(); k != nil; k, v = c.Next() {
@@ -113,8 +106,8 @@ func (d *Database) PrintAllLogsUnordered() error {
 
 func (d *Database) GetLogsFromIndex(index int64) ([]*rcppb.LogEntry, error) {
 	var logsSlice []*rcppb.LogEntry
-	err := d.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket(logsBucket)
+	err := d.DB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(constants.LogsBucket)
 
 		for i := index; ; i++ {
 			logIndex := fmt.Sprintf("%d", i)
@@ -135,7 +128,6 @@ func (d *Database) GetLogsFromIndex(index int64) ([]*rcppb.LogEntry, error) {
 	return logsSlice, err
 }
 
-
 func (d *Database) PutLogAtIndex(index int64, logEntry *rcppb.LogEntry) (string, string, error) {
 	existingEntry, err := d.GetLogAtIndex(index)
 	failureNode := ""
@@ -147,13 +139,13 @@ func (d *Database) PutLogAtIndex(index int64, logEntry *rcppb.LogEntry) (string,
 			recoveredNode = existingEntry.NodeId
 		}
 	}
-	log.Printf("Putting %v at index %d\n", logEntry, index)
+	// log.Printf("Putting %v at index %d\n", logEntry, index)
 	logBytes, err := json.Marshal(logEntry)
 	if err != nil {
 		return failureNode, recoveredNode, err
 	}
-	return failureNode, recoveredNode, d.db.Update(func (tx *bolt.Tx) error {
-		b := tx.Bucket(logsBucket)
+	return failureNode, recoveredNode, d.DB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(constants.LogsBucket)
 		key := fmt.Appendf(nil, "%d", index)
 		return b.Put(key, logBytes)
 	})

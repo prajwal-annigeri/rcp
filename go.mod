@@ -3,6 +3,7 @@ module rcp
 go 1.23.6
 
 require (
+	github.com/google/uuid v1.6.0
 	go.etcd.io/bbolt v1.4.0
 	google.golang.org/grpc v1.70.0
 	google.golang.org/protobuf v1.35.2
