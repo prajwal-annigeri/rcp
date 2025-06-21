@@ -83,16 +83,18 @@ func (node *Node) checkInsertRecoveryLog(nodeId string) {
 	node.recoverySetLock.Lock()
 	defer node.recoverySetLock.Unlock()
 	status, ok := node.serverStatusMap.Load(nodeId)
-	
+
 	if ok && !status.(bool) {
 		_, exists := node.recoveryLogWaitingSet[nodeId]
 		if !exists {
 			node.recoveryLogWaitingSet[nodeId] = struct{}{}
 			log.Printf("Inserting %s recovery log", nodeId)
-			node.logBufferChan <- &rcppb.LogEntry{
-				LogType: "recovery",
-				NodeId:  nodeId,
-				Term:    node.currentTerm,
+			node.logBufferChan <- LogWithCallbackChannel{
+				LogEntry: &rcppb.LogEntry{
+					LogType: "recovery",
+					NodeId:  nodeId,
+					Term:    node.currentTerm,
+				},
 			}
 		}
 	}
@@ -103,15 +105,17 @@ func (node *Node) checkInsertFailureLog(nodeId string) {
 	defer node.failureSetLock.Unlock()
 	status, ok := node.serverStatusMap.Load(nodeId)
 	if ok && status.(bool) {
-		
+
 		_, exists := node.failureLogWaitingSet[nodeId]
 		if !exists {
 			node.failureLogWaitingSet[nodeId] = struct{}{}
 			log.Printf("Inserting %s failure log", nodeId)
-			node.logBufferChan <- &rcppb.LogEntry{
-				LogType: "failure",
-				NodeId:  nodeId,
-				Term:    node.currentTerm,
+			node.logBufferChan <- LogWithCallbackChannel{
+				LogEntry: &rcppb.LogEntry{
+					LogType: "failure",
+					NodeId:  nodeId,
+					Term:    node.currentTerm,
+				},
 			}
 		}
 	}
@@ -131,7 +135,7 @@ func (node *Node) removeFromRecoverySet(nodeId string) {
 
 func (node *Node) makeCallbackChannel() (string, chan struct{}) {
 	id := uuid.New().String()
-	callbackChannel := make(chan struct{})
-	node.callbackChannelMap.Store(id, callbackChannel)
+	callbackChannel := make(chan struct{}, 10)
+	// node.callbackChannelMap.Store(id, callbackChannel)
 	return id, callbackChannel
 }

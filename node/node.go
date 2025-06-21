@@ -18,14 +18,19 @@ import (
 var nodes []*Node
 var config ConfigFile
 
+type LogWithCallbackChannel struct {
+	LogEntry        *rcppb.LogEntry
+	CallbackChannel chan struct{}
+}
+
 type Node struct {
 	rcppb.UnimplementedRCPServer
 	currentTerm int64
 
 	// TODO: persist votedFor on disk
-	votedFor                       sync.Map
-	db                             *db.Database
-	commitIndex                    int64
+	votedFor    sync.Map
+	db          *db.Database
+	commitIndex int64
 
 	// Index upto where logs have been executed (inclusive)
 	execIndex                      int64
@@ -48,7 +53,7 @@ type Node struct {
 	electionTimer                  *time.Timer
 	currAlive                      int
 	serverStatusMap                sync.Map
-	logBufferChan                  chan *rcppb.LogEntry // Read from HTTP request into this buffer
+	logBufferChan                  chan LogWithCallbackChannel // Read from HTTP request into this buffer
 	mutex                          sync.Mutex
 	replicationQuorum              int
 	protocol                       string
@@ -71,9 +76,10 @@ type Node struct {
 	recoverySetLock       sync.Mutex
 
 	// reachable nodes set to simulate partitions
-	reachableNodes     map[string]struct{}
-	reachableSetLock   sync.RWMutex
-	callbackChannelMap sync.Map
+	reachableNodes            map[string]struct{}
+	reachableSetLock          sync.RWMutex
+	callbackChannelMap        sync.Map
+	indexToCallbackChannelMap sync.Map
 
 	failedAppendEntries sync.Map
 	// replicatedCount     sync.Map
@@ -131,7 +137,7 @@ func NewNode(thisNodeId, protocol string) (*Node, error) {
 		Live:                  true,
 		ClientMap:             make(map[string]rcppb.RCPClient),
 		electionTimer:         time.NewTimer(2 * time.Second),
-		logBufferChan:         make(chan *rcppb.LogEntry, 10000),
+		logBufferChan:         make(chan LogWithCallbackChannel, 10000),
 		failureLogWaitingSet:  make(map[string]struct{}),
 		recoveryLogWaitingSet: make(map[string]struct{}),
 		reachableNodes:        make(map[string]struct{}),
@@ -199,7 +205,7 @@ func (node *Node) Start() {
 	//start executor goroutine which applies logs to state machine
 	go node.executor()
 
-	go node.callbacker()
+	// go node.callbacker()
 
 	for {
 		printMenu()

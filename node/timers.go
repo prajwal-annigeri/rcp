@@ -53,19 +53,22 @@ func (node *Node) sendHeartbeats() {
 		counter += 1
 		// Send AppendEntry only if live and is leader
 		if node.Live && node.isLeader {
-			channelReadTimer := time.After(50 * time.Millisecond)
+			channelReadTimer := time.After(5 * time.Millisecond)
 			var logsToSend []*rcppb.LogEntry
-			loop:
-			for i := 1;; {
+		loop:
+			for i := 1; ; {
 				if len(logsToSend) > constants.MaxLogsPerAppendEntry {
 					break
 				}
 				select {
 				// read from the channel which has requests received from the client
 				case c := <-node.logBufferChan:
+					logEntry := c.LogEntry
 					log.Printf("Read log %d from channel\n", i)
-					c.Term = node.currentTerm
-					logsToSend = append(logsToSend, c)
+					logEntry.Term = node.currentTerm
+					logsToSend = append(logsToSend, logEntry)
+					ndx := node.lastIndex + int64(len(logsToSend))
+					go node.indexToCallbackChannelMap.Store(ndx, c.CallbackChannel)
 					i += 1
 				case <-channelReadTimer:
 					break loop
@@ -123,8 +126,8 @@ func (node *Node) sendHeartbeats() {
 				successResponses = 1
 			}
 			// isDone := false
-			successReadingLoop:
-			for ;successResponses < len(node.ClientMap); {
+		successReadingLoop:
+			for successResponses < len(node.ClientMap) {
 				select {
 				case resp := <-responseChan:
 					successResponses += 1
@@ -134,16 +137,19 @@ func (node *Node) sendHeartbeats() {
 					if resp.Term > node.currentTerm {
 						node.currentTerm = resp.Term
 						node.isLeader = false
-						
+
 						break successReadingLoop
 					}
 
 					if successResponses == node.replicationQuorum {
+						prevCommit := node.commitIndex
 						node.commitIndex = node.lastIndex
+						go node.doCallbacks(prevCommit + 1, node.commitIndex)
 						// log.Printf("waiter here: %v", time.Since(now))
+						
 						waitAfterCommit = time.After(10 * time.Millisecond)
 						if len(logsToSend) > 0 {
-							log.Printf("LOGX (%d) Committed Setting shorter timer hopefully: %v", counter, time.Since(begin3))
+							log.Printf("LOGX (%d) Committed index %d, Setting shorter timer hopefully: %v, abs time: %v", counter, node.commitIndex, time.Since(begin3), time.Now().UnixMilli())
 						}
 					}
 				case <-waitTimer:
@@ -172,7 +178,7 @@ func (node *Node) constructAppendEntriesRequest(term int64, nodeId string) (*rcp
 	if nextIndex.(int64)-1 >= 0 {
 		prevLogEntry, err := node.db.GetLogAtIndex(nextIndex.(int64) - 1)
 		if err != nil {
-			log.Printf("error fetching prevLogEntry %d for %s: %v", nextIndex.(int64) - 1, nodeId, err)
+			log.Printf("error fetching prevLogEntry %d for %s: %v", nextIndex.(int64)-1, nodeId, err)
 			return nil, -1, err
 		}
 		prevLogTerm = prevLogEntry.Term
@@ -202,7 +208,7 @@ func (node *Node) constructAppendEntriesRequest(term int64, nodeId string) (*rcp
 	}, nextIndex.(int64), nil
 }
 
-func (node *Node) sendHeartbeatTo(client rcppb.RCPClient, nodeId string, responsesChan chan *rcppb.AppendEntriesResponse ) {
+func (node *Node) sendHeartbeatTo(client rcppb.RCPClient, nodeId string, responsesChan chan *rcppb.AppendEntriesResponse) {
 	// log.Printf("Sending heartbeat to %s\n", nodeId)
 	req, currNextIndex, err := node.constructAppendEntriesRequest(node.currentTerm, nodeId)
 	if err != nil {
@@ -230,9 +236,9 @@ func (node *Node) sendHeartbeatTo(client rcppb.RCPClient, nodeId string, respons
 	if node.protocol == "rcp" {
 		go node.checkInsertRecoveryLog(nodeId)
 	}
-	
+
 	if resp.Success {
-		
+
 		if len(req.Entries) > 0 {
 			// currNextIndex, _ := node.nextIndex.Load(nodeId)
 			node.nextIndex.Store(nodeId, currNextIndex+int64(len(req.Entries)))
@@ -246,7 +252,7 @@ func (node *Node) sendHeartbeatTo(client rcppb.RCPClient, nodeId string, respons
 			// if len(req.Entries) > 0 {
 			// 	log.Printf("LOGX Sending resp: %v to chan from %s", resp.Success, nodeId)
 			// }
-			
+
 			responsesChan <- resp
 			// node.increaseReplicationCount(req.PrevLogIndex + int64(len(req.Entries)))
 		}

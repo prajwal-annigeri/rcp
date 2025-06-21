@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"rcp/constants"
 	"rcp/db"
 	"rcp/rcppb"
 	"sync"
 	"time"
-	"rcp/constants"
 
 	bolt "go.etcd.io/bbolt"
 	"google.golang.org/grpc/codes"
@@ -124,7 +124,6 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 // 	return nil
 // }
 
-
 func (node *Node) insertLogs(appendEntryReq *rcppb.AppendEntriesReq) error {
 	if len(appendEntryReq.Entries) == 0 {
 		return nil
@@ -152,7 +151,7 @@ func (node *Node) insertLogs(appendEntryReq *rcppb.AppendEntriesReq) error {
 					if err != nil {
 						return fmt.Errorf("could not deserialize existing log at index %d: %v", currIndex, err)
 					}
-	
+
 					if existingEntry.LogType == "failure" {
 						node.removeFromFailureSet(existingEntry.NodeId)
 					} else if existingEntry.LogType == "recovery" {
@@ -160,7 +159,6 @@ func (node *Node) insertLogs(appendEntryReq *rcppb.AppendEntriesReq) error {
 					}
 				}
 			}
-			
 
 			// Marshal and put new entry
 			if entry.LogType == "failure" || entry.LogType == "success" {
@@ -184,7 +182,6 @@ func (node *Node) insertLogs(appendEntryReq *rcppb.AppendEntriesReq) error {
 		return nil
 	})
 }
-
 
 func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.RequestVoteReq) (*rcppb.RequestVoteResponse, error) {
 	if !node.Live {
@@ -278,25 +275,32 @@ func (node *Node) Store(ctx context.Context, KV *rcppb.StoreRequest) (*wrappersp
 		defer node.callbackChannelMap.Delete(callbackChannelId)
 		begin := time.Now()
 		go func() {
-			node.logBufferChan <- &rcppb.LogEntry{
-				LogType:           "store",
-				Key:               KV.Key,
-				Value:             KV.Value,
-				CallbackChannelId: callbackChannelId,
-				Bucket:            KV.Bucket,
+			node.logBufferChan <- LogWithCallbackChannel{
+				LogEntry: &rcppb.LogEntry{
+					LogType:           "store",
+					Key:               KV.Key,
+					Value:             KV.Value,
+					CallbackChannelId: callbackChannelId,
+					Bucket:            KV.Bucket,
+				},
+				CallbackChannel: callbackChannel,
 			}
 		}()
-
-		log.Printf("Time before select: %v", time.Since(begin))
-		select {
-		case <-callbackChannel:
-			log.Println("Got callback")
-			log.Printf("Time to get callback after put: %v", time.Since(begin))
-			return &wrapperspb.BoolValue{Value: true}, nil
-		case <-time.After(20 * time.Second):
-			log.Printf("TIMED OUT Store")
-			return nil, errors.New("timed out")
+		// log.Printf("LOGX Time after putting log in channel: %v, abs: %v", time.Since(begin), time.Now().UnixMilli())
+		waitTimer := time.After(10 * time.Second)
+		for {
+			select {
+			case <-callbackChannel:
+				log.Printf("Time to get callback after put: %v, absolute: %v", time.Since(begin), time.Now().UnixMilli())
+				return &wrapperspb.BoolValue{Value: true}, nil
+			case <-waitTimer:
+				log.Printf("TIMED OUT Store")
+				return nil, errors.New("timed out")
+			default:
+				time.Sleep(2 * time.Millisecond)
+			}
 		}
+		
 	}
 	return &wrapperspb.BoolValue{Value: true}, nil
 }
@@ -341,17 +345,19 @@ func (node *Node) Delete(ctx context.Context, req *rcppb.DeleteReq) (*wrapperspb
 		defer node.callbackChannelMap.Delete(callbackChannelId)
 		begin := time.Now()
 		go func() {
-			node.logBufferChan <- &rcppb.LogEntry{
-				LogType:           "delete",
-				Key:               req.Key,
-				CallbackChannelId: callbackChannelId,
-				Bucket:            req.Bucket,
+			node.logBufferChan <- LogWithCallbackChannel{
+				LogEntry: &rcppb.LogEntry{
+					LogType:           "delete",
+					Key:               req.Key,
+					CallbackChannelId: callbackChannelId,
+					Bucket:            req.Bucket,
+				},
+				CallbackChannel: callbackChannel,
 			}
 		}()
 
 		select {
 		case <-callbackChannel:
-			log.Println("Got callback")
 			log.Printf("Time to get callback after delete: %v", time.Since(begin))
 			return &wrapperspb.BoolValue{Value: true}, nil
 		case <-time.After(20 * time.Second):
@@ -448,14 +454,17 @@ func (node *Node) DepositChecking(ctx context.Context, req *rcppb.DepositCheckin
 		callbackChannelId, callbackChannel := node.makeCallbackChannel()
 		begin := time.Now()
 		go func() {
-			node.logBufferChan <- &rcppb.LogEntry{
-				LogType: "bank",
-				Transaction1: &rcppb.Transaction{
-					AccountId:   req.AccountId,
-					Amount:      req.Amount,
-					AccountType: string(db.CheckingAccount),
+			node.logBufferChan <- LogWithCallbackChannel{
+				LogEntry: &rcppb.LogEntry{
+					LogType: "bank",
+					Transaction1: &rcppb.Transaction{
+						AccountId:   req.AccountId,
+						Amount:      req.Amount,
+						AccountType: string(db.CheckingAccount),
+					},
+					CallbackChannelId: callbackChannelId,
 				},
-				CallbackChannelId: callbackChannelId,
+				CallbackChannel: callbackChannel,
 			}
 		}()
 
@@ -503,14 +512,17 @@ func (node *Node) WriteCheck(ctx context.Context, req *rcppb.WriteCheckRequest) 
 		}
 
 		go func() {
-			node.logBufferChan <- &rcppb.LogEntry{
-				LogType: "bank",
-				Transaction1: &rcppb.Transaction{
-					AccountId:   req.AccountId,
-					Amount:      -1 * req.Amount,
-					AccountType: string(db.CheckingAccount),
+			node.logBufferChan <- LogWithCallbackChannel{
+				LogEntry: &rcppb.LogEntry{
+					LogType: "bank",
+					Transaction1: &rcppb.Transaction{
+						AccountId:   req.AccountId,
+						Amount:      -1 * req.Amount,
+						AccountType: string(db.CheckingAccount),
+					},
+					CallbackChannelId: callbackChannelId,
 				},
-				CallbackChannelId: callbackChannelId,
+				CallbackChannel: callbackChannel,
 			}
 		}()
 
@@ -561,19 +573,22 @@ func (node *Node) SendPayment(ctx context.Context, req *rcppb.SendPaymentRequest
 		}
 
 		go func() {
-			node.logBufferChan <- &rcppb.LogEntry{
-				LogType: "bank",
-				Transaction1: &rcppb.Transaction{
-					AccountId:   req.AccountIdFrom,
-					Amount:      -1 * req.Amount,
-					AccountType: string(db.CheckingAccount),
+			node.logBufferChan <- LogWithCallbackChannel{
+				LogEntry: &rcppb.LogEntry{
+					LogType: "bank",
+					Transaction1: &rcppb.Transaction{
+						AccountId:   req.AccountIdFrom,
+						Amount:      -1 * req.Amount,
+						AccountType: string(db.CheckingAccount),
+					},
+					Transaction2: &rcppb.Transaction{
+						AccountId:   req.AccountIdTo,
+						Amount:      req.Amount,
+						AccountType: string(db.CheckingAccount),
+					},
+					CallbackChannelId: callbackChannelId,
 				},
-				Transaction2: &rcppb.Transaction{
-					AccountId:   req.AccountIdTo,
-					Amount:      req.Amount,
-					AccountType: string(db.CheckingAccount),
-				},
-				CallbackChannelId: callbackChannelId,
+				CallbackChannel: callbackChannel,
 			}
 		}()
 
@@ -621,14 +636,17 @@ func (node *Node) TransactSavings(ctx context.Context, req *rcppb.TransactSaving
 		log.Printf("Time before creating callback channel: %v", time.Since(now))
 		callbackChannelId, callbackChannel := node.makeCallbackChannel()
 		go func() {
-			node.logBufferChan <- &rcppb.LogEntry{
-				LogType: "bank",
-				Transaction1: &rcppb.Transaction{
-					AccountId:   req.AccountId,
-					Amount:      req.Amount,
-					AccountType: string(db.SavingsAccount),
+			node.logBufferChan <- LogWithCallbackChannel{
+				LogEntry: &rcppb.LogEntry{
+					LogType: "bank",
+					Transaction1: &rcppb.Transaction{
+						AccountId:   req.AccountId,
+						Amount:      req.Amount,
+						AccountType: string(db.SavingsAccount),
+					},
+					CallbackChannelId: callbackChannelId,
 				},
-				CallbackChannelId: callbackChannelId,
+				CallbackChannel: callbackChannel,
 			}
 		}()
 
@@ -674,19 +692,22 @@ func (node *Node) Amalgamate(ctx context.Context, req *rcppb.AmalgamateRequest) 
 		}
 
 		go func() {
-			node.logBufferChan <- &rcppb.LogEntry{
-				LogType: "bank",
-				Transaction1: &rcppb.Transaction{
-					AccountId:   req.AccountIdFrom,
-					Amount:      -1 * balance,
-					AccountType: string(db.SavingsAccount),
+			node.logBufferChan <- LogWithCallbackChannel{
+				LogEntry: &rcppb.LogEntry{
+					LogType: "bank",
+					Transaction1: &rcppb.Transaction{
+						AccountId:   req.AccountIdFrom,
+						Amount:      -1 * balance,
+						AccountType: string(db.SavingsAccount),
+					},
+					Transaction2: &rcppb.Transaction{
+						AccountId:   req.AccountIdTo,
+						Amount:      balance,
+						AccountType: string(db.CheckingAccount),
+					},
+					CallbackChannelId: callbackChannelId,
 				},
-				Transaction2: &rcppb.Transaction{
-					AccountId:   req.AccountIdTo,
-					Amount:      balance,
-					AccountType: string(db.CheckingAccount),
-				},
-				CallbackChannelId: callbackChannelId,
+				CallbackChannel: callbackChannel,
 			}
 		}()
 

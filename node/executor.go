@@ -17,31 +17,31 @@ func (node *Node) executor() {
 	for {
 		currCommit := node.commitIndex
 		if currCommit > node.execIndex {
-			
+
 			node.db.DB.Update(func(tx *bolt.Tx) error {
 				logsBkt := tx.Bucket(constants.LogsBucket)
-				for ; node.execIndex < currCommit; {
-					logBytes := logsBkt.Get(fmt.Appendf(nil, "%d", node.execIndex + 1))
+				for node.execIndex < currCommit {
+					logBytes := logsBkt.Get(fmt.Appendf(nil, "%d", node.execIndex+1))
 					if logBytes == nil {
-						return fmt.Errorf("executor() no log at index: %d", node.execIndex + 1)
+						return fmt.Errorf("executor() no log at index: %d", node.execIndex+1)
 					}
 					var logEntry rcppb.LogEntry
 					err := json.Unmarshal(logBytes, &logEntry)
 					if err != nil {
-						return fmt.Errorf("could not deserialize logbytes of index %d into logentry: %v", node.execIndex + 1, err)
+						return fmt.Errorf("could not deserialize logbytes of index %d into logentry: %v", node.execIndex+1, err)
 					}
 
 					switch logEntry.LogType {
 					case "store":
 						kvBkt := tx.Bucket([]byte(logEntry.Bucket))
 						if kvBkt == nil {
-							return fmt.Errorf("executor() index %d, no bucket %s", node.execIndex + 1, logEntry.Bucket)
+							return fmt.Errorf("executor() index %d, no bucket %s", node.execIndex+1, logEntry.Bucket)
 						}
 						kvBkt.Put([]byte(logEntry.Key), []byte(logEntry.Value))
 					case "delete":
 						kvBkt := tx.Bucket([]byte(logEntry.Bucket))
 						if kvBkt == nil {
-							return fmt.Errorf("executor() index %d, no bucket %s", node.execIndex + 1, logEntry.Bucket)
+							return fmt.Errorf("executor() index %d, no bucket %s", node.execIndex+1, logEntry.Bucket)
 						}
 						kvBkt.Delete([]byte(logEntry.Key))
 					case "failure":
@@ -87,48 +87,68 @@ func (node *Node) executor() {
 	}
 }
 
-// Performs callback to let client know log entry is committed
-func (node *Node) callbacker() {
-	currIndex := int64(-1)
-	for {
-		currCommit := node.commitIndex
-		if currIndex == currCommit {
-			time.Sleep(2 * time.Millisecond)
-			continue
-		}
-		node.db.DB.View(func(tx *bolt.Tx) error {
-			b := tx.Bucket(constants.LogsBucket)
-			for currIndex < currCommit {
-				currIndex++
-				logBytes := b.Get(fmt.Appendf(nil, "%d", currIndex))
-				if logBytes == nil {
-					return fmt.Errorf("callbacker(): error empty log at index %d", currIndex)
-				}
-				var logEntry rcppb.LogEntry
-				err := json.Unmarshal(logBytes, &logEntry)
-				if err != nil {
-					return err
-				}
-				callbackChannelRaw, ok := node.callbackChannelMap.Load(logEntry.CallbackChannelId)
-				if !ok {
-					// log.Println("no callback channel for index %d", currIndex)
-					return nil
-				}
-				callbackChannel := callbackChannelRaw.(chan struct{})
-				callbackChannel <- struct{}{}
-				close(callbackChannel)
-			}
-			
-			return nil
+// doCallbacks informs the client that put this log entry about its commit
+// startIndex and endIndex are inclusive
+func (node *Node) doCallbacks(startIndex, endIndex int64) {
+	for i := startIndex; i <= endIndex; i++ {
+		go node.doCallback(i)
+	}
+}
 
-		})
+func (node *Node) doCallback(idx int64) {
+	callbackChannelRaw, ok := node.indexToCallbackChannelMap.Load(idx)
+	if !ok {
+		// log.Println("no callback channel for index %d", currIndex)
+		return
+	}
+	callbackChannel := callbackChannelRaw.(chan struct{})
+	callbackChannel <- struct{}{}
+	// log.Printf("LOGX time doCallback: %v", time.Now().UnixMilli())
+	close(callbackChannel)
+}
+
+// Performs callback to let client know log entry is committed
+// func (node *Node) callbacker() {
+// 	currIndex := int64(-1)
+// 	for {
+// 		currCommit := node.commitIndex
+// 		if currIndex == currCommit {
+// 			time.Sleep(2 * time.Millisecond)
+// 			continue
+// 		}
+// 		node.db.DB.View(func(tx *bolt.Tx) error {
+// 			b := tx.Bucket(constants.LogsBucket)
+// 			for currIndex < currCommit {
+// 				currIndex++
+// 				logBytes := b.Get(fmt.Appendf(nil, "%d", currIndex))
+// 				if logBytes == nil {
+// 					return fmt.Errorf("callbacker(): error empty log at index %d", currIndex)
+// 				}
+// 				var logEntry rcppb.LogEntry
+// 				err := json.Unmarshal(logBytes, &logEntry)
+// 				if err != nil {
+// 					return err
+// 				}
+// 				callbackChannelRaw, ok := node.callbackChannelMap.Load(logEntry.CallbackChannelId)
+// 				if !ok {
+// 					// log.Println("no callback channel for index %d", currIndex)
+// 					return nil
+// 				}
+// 				callbackChannel := callbackChannelRaw.(chan struct{})
+// 				callbackChannel <- struct{}{}
+// 				close(callbackChannel)
+// 			}
+
+// 			return nil
+
+// 		})
 		// if node.commitIndex > currIndex {
 		// 	currIndex += 1
 		// 	go node.doCallback(currIndex)
 		// }
 		// time.Sleep(2 * time.Millisecond)
-	}
-}
+// 	}
+// }
 
 // func (node *Node) doCallback(index int64) {
 // 	begin := time.Now()
