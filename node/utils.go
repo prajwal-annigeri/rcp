@@ -48,6 +48,7 @@ func (node *Node) printState() {
 	log.Printf("Term: %d\nPrev Term: %d, Prev Log Index: %d isLeader: %t\n", node.currentTerm, node.lastTerm, node.lastIndex, node.isLeader)
 	log.Printf("Current alive: %d", node.currAlive)
 	log.Printf("Reachable nodes: %v", node.reachableNodes)
+	log.Printf("Persistent: %t", node.isPersistent)
 	log.Println("Next Index: ")
 	var nextIndexString strings.Builder
 	node.nextIndex.Range(func(key, value any) bool {

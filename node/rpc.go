@@ -2,7 +2,6 @@ package node
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -12,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	bolt "go.etcd.io/bbolt"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -57,7 +55,15 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 
 	if appendEntryReq.PrevLogIndex >= 0 {
 		prevLogTerm := int64(-1)
-		logEntry, err := node.db.GetLogAtIndex(appendEntryReq.PrevLogIndex)
+		var logEntry *rcppb.LogEntry
+		var err error
+		err = nil
+		if node.isPersistent {
+			logEntry, err = node.db.GetLogAtIndex(appendEntryReq.PrevLogIndex)
+		} else {
+			logEntry, err = node.GetInMemoryLog(appendEntryReq.PrevLogIndex)
+		}
+		
 		if err == nil {
 			prevLogTerm = logEntry.Term
 		}
@@ -129,58 +135,13 @@ func (node *Node) insertLogs(appendEntryReq *rcppb.AppendEntriesReq) error {
 		return nil
 	}
 
-	currIndex := appendEntryReq.PrevLogIndex + 1
-	lastEntryTerm := appendEntryReq.Term
+	if node.isPersistent {
+		return node.insertLogsPersistent(appendEntryReq)
+	} else {
+		return node.insertLogsInMemory(appendEntryReq)
+	}
 
-	return node.db.DB.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket(constants.LogsBucket)
-		if b == nil {
-			return errors.New("bucket not found 'logs'")
-		}
-		for _, entry := range appendEntryReq.Entries {
-			// Lookup existing log at index
-			key := fmt.Appendf(nil, "%d", currIndex)
-
-			if _, ok := node.possibleFailureOrRecoveryIndex.Load(fmt.Sprintf("%d", currIndex)); ok {
-				logBytes := b.Get(key)
-
-				// Track removed nodes
-				if logBytes != nil {
-					var existingEntry rcppb.LogEntry
-					err := json.Unmarshal(logBytes, &existingEntry)
-					if err != nil {
-						return fmt.Errorf("could not deserialize existing log at index %d: %v", currIndex, err)
-					}
-
-					if existingEntry.LogType == "failure" {
-						node.removeFromFailureSet(existingEntry.NodeId)
-					} else if existingEntry.LogType == "recovery" {
-						node.removeFromRecoverySet(existingEntry.NodeId)
-					}
-				}
-			}
-
-			// Marshal and put new entry
-			if entry.LogType == "failure" || entry.LogType == "success" {
-				go node.possibleFailureOrRecoveryIndex.Store(fmt.Sprintf("%d", currIndex), "")
-			}
-			newLogBytes, err := json.Marshal(entry)
-			if err != nil {
-				return fmt.Errorf("could not marshal new log entry at index %d: %v", currIndex, err)
-			}
-			err = b.Put(key, newLogBytes)
-			if err != nil {
-				return fmt.Errorf("failed to write log at index %d: %v", currIndex, err)
-			}
-
-			node.lastIndex = currIndex
-			lastEntryTerm = entry.Term
-			currIndex++
-		}
-
-		node.lastTerm = lastEntryTerm
-		return nil
-	})
+	
 }
 
 func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.RequestVoteReq) (*rcppb.RequestVoteResponse, error) {
@@ -309,13 +270,29 @@ func (node *Node) Get(ctx context.Context, req *rcppb.GetValueReq) (*rcppb.GetVa
 	if req.Bucket == "" {
 		req.Bucket = constants.DefaultBucket
 	}
-	value, err := node.db.GetKV(req.Key, req.Bucket)
 
-	if err != nil {
+	var value string
+	var err error
+	
+	if node.isPersistent {
+		value, err = node.db.GetKV(req.Key, req.Bucket)
+		if err != nil {
 		log.Printf("Error getting value for %s: %v\n", req.Key, err)
 		return nil, err
+		}
+		return &rcppb.GetValueResponse{Success: true, Value: value}, nil
+	} else {
+		err = nil
+		val, ok := node.inMemoryKV.Load(fmt.Sprintf("%s/%s", req.Bucket, req.Key))
+		if !ok {
+			err = fmt.Errorf("no value for key: %s in bucket %s", req.Key, req.Bucket)
+			return nil, err
+		}
+
+		value = val.(string)
+		return &rcppb.GetValueResponse{Success: true, Value: value}, nil
 	}
-	return &rcppb.GetValueResponse{Success: true, Value: value}, nil
+	
 }
 
 func (node *Node) Delete(ctx context.Context, req *rcppb.DeleteReq) (*wrapperspb.BoolValue, error) {

@@ -84,6 +84,10 @@ type Node struct {
 	failedAppendEntries sync.Map
 	// replicatedCount     sync.Map
 	delays sync.Map
+
+	isPersistent bool
+	inMemoryLogs sync.Map
+	inMemoryKV   sync.Map
 }
 
 // struct to read in the config file
@@ -93,7 +97,7 @@ type ConfigFile struct {
 }
 
 // constructor
-func NewNode(thisNodeId, protocol string) (*Node, error) {
+func NewNode(thisNodeId, protocol string, persistent bool) (*Node, error) {
 	// reads config file
 	mapJson, err := os.Open("nodes.json")
 	if err != nil {
@@ -110,12 +114,7 @@ func NewNode(thisNodeId, protocol string) (*Node, error) {
 		log.Fatalf("Failed to unmarshal JSON: %s", err)
 	}
 
-	// Initialize data store
-	dbPath := "./dbs/" + thisNodeId + ".db"
-	db, dbCloseFunc, err := db.InitDatabase(dbPath)
-	if err != nil {
-		log.Fatalf("InitDatabase(%q): %v", dbPath, err)
-	}
+	
 
 	matchIndexMap := make(map[string]int)
 	nodes = config.Nodes
@@ -124,8 +123,8 @@ func NewNode(thisNodeId, protocol string) (*Node, error) {
 		Id:                    thisNodeId,
 		currentTerm:           0,
 		K:                     config.K,
-		db:                    db,
-		DBCloseFunc:           dbCloseFunc,
+		// db:                    db,
+		// DBCloseFunc:           dbCloseFunc,
 		lastApplied:           -1,
 		commitIndex:           -1,
 		execIndex:             -1,
@@ -142,18 +141,32 @@ func NewNode(thisNodeId, protocol string) (*Node, error) {
 		recoveryLogWaitingSet: make(map[string]struct{}),
 		reachableNodes:        make(map[string]struct{}),
 		beginTime:             time.Now(),
+		isPersistent:          persistent,
 	}
 
-	if protocol == "rcp" {
+	if newNode.isPersistent {
+		// Initialize data store
+		dbPath := "./dbs/" + thisNodeId + ".db"
+		db, dbCloseFunc, err := db.InitDatabase(dbPath)
+		if err != nil {
+			log.Fatalf("InitDatabase(%q): %v", dbPath, err)
+		}
+		newNode.db = db
+		newNode.DBCloseFunc = dbCloseFunc
+	}
+	
+
+	switch protocol {
+	case "rcp":
 		newNode.replicationQuorum = config.K + 1
 		newNode.protocol = "rcp"
-	} else if protocol == "raft" {
+	case "raft":
 		newNode.replicationQuorum = int(len(nodes)/2) + 1
 		newNode.protocol = "raft"
-	} else if protocol == "fraft" {
+	case "fraft":
 		newNode.replicationQuorum = config.K + 1
 		newNode.protocol = "fraft"
-	} else {
+	default:
 		log.Fatalf("Invalid protocol: %s", protocol)
 	}
 
@@ -214,12 +227,17 @@ func (node *Node) Start() {
 
 		switch input {
 		case "2":
-			node.db.PrintAllLogs()
-		case "3":
-			err := node.db.PrintAllLogsUnordered()
-			if err != nil {
-				log.Printf("Error printing all logs: %v\n", err)
+			if node.isPersistent {
+				node.db.PrintAllLogs()
+			} else {
+				node.PrintAllInMemoryLogs()
 			}
+
+		// case "3":
+		// 	err := node.db.PrintAllLogsUnordered()
+		// 	if err != nil {
+		// 		log.Printf("Error printing all logs: %v\n", err)
+		// 	}
 		case "4":
 			node.printState()
 		default:

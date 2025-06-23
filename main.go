@@ -14,6 +14,7 @@ var (
 	nodeId   = flag.String("id", "", "Node ID")
 	logs     = flag.Bool("logs", false, "Logging")
 	protocol = flag.String("protocol", "rcp", "raft/fraft/rcp")
+	persist = flag.Bool("persist", false, "Persistent or in-memory")
 )
 
 func main() {
@@ -31,7 +32,7 @@ func main() {
 		log.Fatalf("protocol can either 'rcp' or 'fraft' or 'raft'")
 	}
 
-	node, err := node.NewNode(*nodeId, *protocol)
+	node, err := node.NewNode(*nodeId, *protocol, *persist)
 	if err != nil {
 		log.Fatalf("Error creating node: %v", err)
 	}

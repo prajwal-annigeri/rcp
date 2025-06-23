@@ -53,7 +53,7 @@ func (node *Node) sendHeartbeats() {
 		counter += 1
 		// Send AppendEntry only if live and is leader
 		if node.Live && node.isLeader {
-			channelReadTimer := time.After(5 * time.Millisecond)
+			channelReadTimer := time.After(1500 * time.Microsecond)
 			var logsToSend []*rcppb.LogEntry
 		loop:
 			for i := 1; ; {
@@ -146,8 +146,12 @@ func (node *Node) sendHeartbeats() {
 						node.commitIndex = node.lastIndex
 						go node.doCallbacks(prevCommit + 1, node.commitIndex)
 						// log.Printf("waiter here: %v", time.Since(now))
+						if node.isPersistent {
+							waitAfterCommit = time.After(10 * time.Millisecond)
+						} else {
+							waitAfterCommit = time.After(100 * time.Microsecond)
+						}
 						
-						waitAfterCommit = time.After(10 * time.Millisecond)
 						if len(logsToSend) > 0 {
 							log.Printf("LOGX (%d) Committed index %d, Setting shorter timer hopefully: %v, abs time: %v", counter, node.commitIndex, time.Since(begin3), time.Now().UnixMilli())
 						}
@@ -173,18 +177,40 @@ func (node *Node) sendHeartbeats() {
 
 func (node *Node) constructAppendEntriesRequest(term int64, nodeId string) (*rcppb.AppendEntriesReq, int64, error) {
 	nextIndex, _ := node.nextIndex.Load(nodeId)
-	entries, err := node.db.GetLogsFromIndex(nextIndex.(int64))
-	prevLogTerm := int64(-1)
-	if nextIndex.(int64)-1 >= 0 {
-		prevLogEntry, err := node.db.GetLogAtIndex(nextIndex.(int64) - 1)
+	var entries []*rcppb.LogEntry
+	var err error
+	if node.isPersistent {
+		entries, err = node.db.GetLogsFromIndex(nextIndex.(int64))
 		if err != nil {
-			log.Printf("error fetching prevLogEntry %d for %s: %v", nextIndex.(int64)-1, nodeId, err)
+			log.Printf("Error getting logs to construct append entries: %v", err)
 			return nil, -1, err
 		}
-		prevLogTerm = prevLogEntry.Term
+	} else {
+		entries, err = node.GetInMemoryLogsFromIndex(nextIndex.(int64))
+		if err != nil {
+			log.Printf("Error getting logs to construct append entries: %v", err)
+			return nil, -1, err
+		}
 	}
-	if err != nil {
-		return nil, -1, err
+	
+	prevLogTerm := int64(-1)
+	if nextIndex.(int64)-1 >= 0 {
+		if node.isPersistent {
+			prevLogEntry, err := node.db.GetLogAtIndex(nextIndex.(int64) - 1)
+			if err != nil {
+				log.Printf("error fetching prevLogEntry %d for %s: %v", nextIndex.(int64)-1, nodeId, err)
+				return nil, -1, err
+			}
+			prevLogTerm = prevLogEntry.Term
+		} else {
+			prevLogEntry, err := node.GetInMemoryLog(nextIndex.(int64) - 1)
+			if err != nil {
+				log.Printf("error fetching prevLogEntry %d for %s: %v", nextIndex.(int64)-1, nodeId, err)
+				return nil, -1, err
+			}
+			prevLogTerm = prevLogEntry.Term
+		}
+		
 	}
 	// nextLogIndex, _ := node.nextIndex.Load(nodeId)
 	delayRaw, ok := node.delays.Load(nodeId)

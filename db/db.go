@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"log"
 	"rcp/constants"
 	"strconv"
 
@@ -19,6 +20,7 @@ type Database struct {
 
 // Initialize boltDB
 func InitDatabase(dbPath string) (db *Database, closeFunc func() error, err error) {
+	log.Println("Initializing store")
 	boltDB, err := bolt.Open(dbPath, 0600, nil)
 	if err != nil {
 		return nil, nil, err

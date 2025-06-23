@@ -39,26 +39,26 @@ func (d *Database) GetLogAtIndex(index int64) (*rcppb.LogEntry, error) {
 	return &logEntry, nil
 }
 
-func (d *Database) DeleteLogsStartingFromIndex(index int64) error {
-	return d.DB.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket(constants.LogsBucket)
+// func (d *Database) DeleteLogsStartingFromIndex(index int64) error {
+// 	return d.DB.Update(func(tx *bolt.Tx) error {
+// 		b := tx.Bucket(constants.LogsBucket)
 
-		for i := index; ; i++ {
-			key := fmt.Appendf(nil, "%d", i)
-			value := b.Get(key)
-			if value == nil {
-				break
-			}
-			log.Printf("Deleting key: %s, value: %s\n", string(key), string(value))
-			err := b.Delete(key)
-			if err != nil {
-				return fmt.Errorf("failed to delete index %s", key)
-			}
-			log.Printf("Deleted key %s\n", key)
-		}
-		return nil
-	})
-}
+// 		for i := index; ; i++ {
+// 			key := fmt.Appendf(nil, "%d", i)
+// 			value := b.Get(key)
+// 			if value == nil {
+// 				break
+// 			}
+// 			log.Printf("Deleting key: %s, value: %s\n", string(key), string(value))
+// 			err := b.Delete(key)
+// 			if err != nil {
+// 				return fmt.Errorf("failed to delete index %s", key)
+// 			}
+// 			log.Printf("Deleted key %s\n", key)
+// 		}
+// 		return nil
+// 	})
+// }
 
 func (d *Database) PrintAllLogs() error {
 	return d.DB.View(func(tx *bolt.Tx) error {
@@ -128,25 +128,25 @@ func (d *Database) GetLogsFromIndex(index int64) ([]*rcppb.LogEntry, error) {
 	return logsSlice, err
 }
 
-func (d *Database) PutLogAtIndex(index int64, logEntry *rcppb.LogEntry) (string, string, error) {
-	existingEntry, err := d.GetLogAtIndex(index)
-	failureNode := ""
-	recoveredNode := ""
-	if err == nil {
-		if existingEntry.LogType == "failure" {
-			failureNode = existingEntry.NodeId
-		} else if existingEntry.LogType == "recovery" {
-			recoveredNode = existingEntry.NodeId
-		}
-	}
-	// log.Printf("Putting %v at index %d\n", logEntry, index)
-	logBytes, err := json.Marshal(logEntry)
-	if err != nil {
-		return failureNode, recoveredNode, err
-	}
-	return failureNode, recoveredNode, d.DB.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket(constants.LogsBucket)
-		key := fmt.Appendf(nil, "%d", index)
-		return b.Put(key, logBytes)
-	})
-}
+// func (d *Database) PutLogAtIndex(index int64, logEntry *rcppb.LogEntry) (string, string, error) {
+// 	existingEntry, err := d.GetLogAtIndex(index)
+// 	failureNode := ""
+// 	recoveredNode := ""
+// 	if err == nil {
+// 		if existingEntry.LogType == "failure" {
+// 			failureNode = existingEntry.NodeId
+// 		} else if existingEntry.LogType == "recovery" {
+// 			recoveredNode = existingEntry.NodeId
+// 		}
+// 	}
+// 	// log.Printf("Putting %v at index %d\n", logEntry, index)
+// 	logBytes, err := json.Marshal(logEntry)
+// 	if err != nil {
+// 		return failureNode, recoveredNode, err
+// 	}
+// 	return failureNode, recoveredNode, d.DB.Update(func(tx *bolt.Tx) error {
+// 		b := tx.Bucket(constants.LogsBucket)
+// 		key := fmt.Appendf(nil, "%d", index)
+// 		return b.Put(key, logBytes)
+// 	})
+// }
