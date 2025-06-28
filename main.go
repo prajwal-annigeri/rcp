@@ -15,6 +15,8 @@ var (
 	logs     = flag.Bool("logs", false, "Logging")
 	protocol = flag.String("protocol", "rcp", "raft/fraft/rcp")
 	persist = flag.Bool("persist", false, "Persistent or in-memory")
+	config = flag.String("config", "", "node config JSON")
+	configFile = flag.String("config-file", "./nodes.json", "node config JSON filename")
 )
 
 func main() {
@@ -32,7 +34,7 @@ func main() {
 		log.Fatalf("protocol can either 'rcp' or 'fraft' or 'raft'")
 	}
 
-	node, err := node.NewNode(*nodeId, *protocol, *persist)
+	node, err := node.NewNode(*nodeId, *protocol, *persist, *config, *configFile)
 	if err != nil {
 		log.Fatalf("Error creating node: %v", err)
 	}

@@ -329,3 +329,7 @@ func (node *Node) Delay(ctx context.Context, req *rcppb.DelayRequest) (*wrappers
 	node.delays.Store(to, delay)
 	return &wrapperspb.BoolValue{Value: true}, nil
 }
+
+func (node *Node) Healthz(ctx context.Context, req *rcppb.HealthzRequest) (*wrapperspb.BoolValue, error) {
+	return &wrapperspb.BoolValue{Value: true}, nil
+}

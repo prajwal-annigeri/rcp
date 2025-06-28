@@ -10,6 +10,7 @@ import (
 	"rcp/db"
 	"rcp/rcppb"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc"
@@ -39,10 +40,10 @@ type Node struct {
 	matchIndex                     map[string]int
 	lastIndex                      int64
 	lastTerm                       int64
-	Id                             string            `json:"id"`
-	Port                           string            `json:"port"`
-	HttpPort                       string            `json:"http_port"`
-	IP                             string            `json:"ip"`
+	Id                             string `json:"id"`
+	Port                           string `json:"port"`
+	HttpPort                       string `json:"http_port"`
+	IP                             string `json:"ip"`
 	NodeAddressMap                 map[string]string
 	ConnMap                        map[string]*grpc.ClientConn
 	ClientMap                      map[string]rcppb.RCPClient
@@ -89,6 +90,12 @@ type Node struct {
 	isPersistent bool
 	inMemoryLogs sync.Map
 	inMemoryKV   sync.Map
+
+	// Number of nodes with which initial connection has been established
+	initialConnectionEstablished atomic.Int64
+
+	//isReady is false until initial connection has been established with all other nodes
+	isReady bool
 }
 
 // struct to read in the config file
@@ -98,32 +105,44 @@ type ConfigFile struct {
 }
 
 // constructor
-func NewNode(thisNodeId, protocol string, persistent bool) (*Node, error) {
-	// reads config file
-	mapJson, err := os.Open("nodes.json")
-	if err != nil {
-		log.Fatalf("Error with reading config JSON: %s\n", err)
-	}
-	defer mapJson.Close()
+func NewNode(thisNodeId, protocol string, persistent bool, configString, configFile string) (*Node, error) {
 
-	byteValue, err := io.ReadAll(mapJson)
-	if err != nil {
-		log.Fatalf("Failed to read file: %s", err)
+	if configString == "" {
+		// reads config file
+		nodesJson, err := os.Open(configFile)
+		if err != nil {
+			log.Fatalf("Error with reading config JSON (%s): %s\n", configFile, err)
+		}
+		defer nodesJson.Close()
+
+		byteValue, err := io.ReadAll(nodesJson)
+		if err != nil {
+			log.Fatalf("Failed to read file: %s", err)
+		}
+		err = json.Unmarshal(byteValue, &config)
+		if err != nil {
+			log.Fatalf("Failed to unmarshal JSON: %s", err)
+		}
+	} else {
+		err := json.Unmarshal([]byte(configString), &config)
+		if err != nil {
+			log.Fatalf("Failed to unmarshal JSON from command line arg: %s", err)
+		}
 	}
-	err = json.Unmarshal(byteValue, &config)
-	if err != nil {
-		log.Fatalf("Failed to unmarshal JSON: %s", err)
+
+	log.Printf("CONFIG: K is %d", config.K)
+	for _, node := range config.Nodes {
+		log.Printf("%s %s %s %s", node.Id, node.IP, node.Port, node.HttpPort)
 	}
+	
 
 	matchIndexMap := make(map[string]int)
 	nodes = config.Nodes
 
 	newNode := &Node{
-		Id:          thisNodeId,
-		currentTerm: 0,
-		K:           config.K,
-		// db:                    db,
-		// DBCloseFunc:           dbCloseFunc,
+		Id:                    thisNodeId,
+		currentTerm:           0,
+		K:                     config.K,
 		lastApplied:           -1,
 		commitIndex:           -1,
 		execIndex:             -1,
@@ -134,7 +153,7 @@ func NewNode(thisNodeId, protocol string, persistent bool) (*Node, error) {
 		ConnMap:               make(map[string]*grpc.ClientConn),
 		Live:                  true,
 		ClientMap:             make(map[string]rcppb.RCPClient),
-		electionTimer:         time.NewTimer(2 * time.Second),
+		electionTimer:         time.NewTimer(20 * time.Minute),
 		logBufferChan:         make(chan LogWithCallbackChannel, 10000),
 		failureLogWaitingSet:  make(map[string]struct{}),
 		recoveryLogWaitingSet: make(map[string]struct{}),
@@ -199,14 +218,19 @@ func (node *Node) Start() {
 
 	// starts HTTP server used by clients to interact with server
 	go node.startHttpServer()
-	time.Sleep(1 * time.Second)
-
-	// establish gRPC connections with ohter nodes
-	node.establishConns()
+	// time.Sleep(1 * time.Second)
 
 	// initialize next index (log of index to send to a node) for every node to 0
 	node.initNextIndex()
 
+	// establish gRPC connections with ohter nodes
+	node.establishConns()
+
+	for ;!node.isReady; {
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	log.Printf("ALL CONNECTIONS ESTABLISHED")
 	// start goroutine that monitors the election timer
 	go node.monitorElectionTimer()
 

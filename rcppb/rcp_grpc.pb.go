@@ -28,6 +28,7 @@ const (
 	RCP_SetStatus_FullMethodName     = "/rcppb.RCP/SetStatus"
 	RCP_Partition_FullMethodName     = "/rcppb.RCP/Partition"
 	RCP_Delay_FullMethodName         = "/rcppb.RCP/Delay"
+	RCP_Healthz_FullMethodName       = "/rcppb.RCP/Healthz"
 )
 
 // RCPClient is the client API for RCP service.
@@ -42,6 +43,7 @@ type RCPClient interface {
 	SetStatus(ctx context.Context, in *wrapperspb.BoolValue, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
 	Partition(ctx context.Context, in *PartitionReq, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
 	Delay(ctx context.Context, in *DelayRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
+	Healthz(ctx context.Context, in *HealthzRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
 }
 
 type rCPClient struct {
@@ -132,6 +134,16 @@ func (c *rCPClient) Delay(ctx context.Context, in *DelayRequest, opts ...grpc.Ca
 	return out, nil
 }
 
+func (c *rCPClient) Healthz(ctx context.Context, in *HealthzRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(wrapperspb.BoolValue)
+	err := c.cc.Invoke(ctx, RCP_Healthz_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RCPServer is the server API for RCP service.
 // All implementations must embed UnimplementedRCPServer
 // for forward compatibility.
@@ -144,6 +156,7 @@ type RCPServer interface {
 	SetStatus(context.Context, *wrapperspb.BoolValue) (*wrapperspb.BoolValue, error)
 	Partition(context.Context, *PartitionReq) (*wrapperspb.BoolValue, error)
 	Delay(context.Context, *DelayRequest) (*wrapperspb.BoolValue, error)
+	Healthz(context.Context, *HealthzRequest) (*wrapperspb.BoolValue, error)
 	mustEmbedUnimplementedRCPServer()
 }
 
@@ -177,6 +190,9 @@ func (UnimplementedRCPServer) Partition(context.Context, *PartitionReq) (*wrappe
 }
 func (UnimplementedRCPServer) Delay(context.Context, *DelayRequest) (*wrapperspb.BoolValue, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Delay not implemented")
+}
+func (UnimplementedRCPServer) Healthz(context.Context, *HealthzRequest) (*wrapperspb.BoolValue, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Healthz not implemented")
 }
 func (UnimplementedRCPServer) mustEmbedUnimplementedRCPServer() {}
 func (UnimplementedRCPServer) testEmbeddedByValue()             {}
@@ -343,6 +359,24 @@ func _RCP_Delay_Handler(srv interface{}, ctx context.Context, dec func(interface
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RCP_Healthz_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HealthzRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RCPServer).Healthz(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RCP_Healthz_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RCPServer).Healthz(ctx, req.(*HealthzRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // RCP_ServiceDesc is the grpc.ServiceDesc for RCP service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -381,6 +415,10 @@ var RCP_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delay",
 			Handler:    _RCP_Delay_Handler,
+		},
+		{
+			MethodName: "Healthz",
+			Handler:    _RCP_Healthz_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

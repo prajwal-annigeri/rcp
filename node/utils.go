@@ -7,6 +7,7 @@ import (
 	"log"
 	"rcp/rcppb"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
@@ -20,9 +21,8 @@ func (node *Node) establishConns() error {
 			if node.NodeAddressMap[id] == "" {
 				return errors.New("no node:address mapping")
 			}
-			log.Printf("Establishing connection from %s to %s\n", node.Id, id)
+			log.Printf("Establishing connection from %s to %s (%s)\n", node.Id, id, address)
 			var conn *grpc.ClientConn
-			log.Printf("Connecting to %s", address)
 			conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 			if err != nil {
 				return err
@@ -30,9 +30,33 @@ func (node *Node) establishConns() error {
 			client := rcppb.NewRCPClient(conn)
 			node.ClientMap[id] = client
 			node.ConnMap[id] = conn
+			go node.checkHealth(id)
 		}
 	}
 	return nil
+}
+
+func (node *Node) checkHealth(nodeID string) {
+	grpcClient, ok := node.ClientMap[nodeID]
+	if !ok {
+		log.Printf("BUG() checkHealth() gRPCClient should have been in map")
+		return
+	}
+
+	for {
+		_, err := grpcClient.Healthz(context.Background(), &rcppb.HealthzRequest{})
+		if err == nil {
+			connectedNodes := node.initialConnectionEstablished.Add(1)
+			log.Printf("Connected to %s!", nodeID)
+			// If connections with all other nodes is established, go ready
+			if connectedNodes + 1 == int64(len(node.NodeAddressMap)) {
+				node.isReady = true
+			}
+			return
+		}
+
+		time.Sleep(2 * time.Millisecond)
+	}
 }
 
 func printMenu() {
