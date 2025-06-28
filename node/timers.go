@@ -53,7 +53,7 @@ func (node *Node) sendHeartbeats() {
 		counter += 1
 		// Send AppendEntry only if live and is leader
 		if node.Live && node.isLeader {
-			channelReadTimer := time.After(1500 * time.Microsecond)
+			channelReadTimer := time.After(2500 * time.Microsecond)
 			var logsToSend []*rcppb.LogEntry
 		loop:
 			for i := 1; ; {

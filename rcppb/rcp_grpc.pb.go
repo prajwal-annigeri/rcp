@@ -20,20 +20,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	RCP_AppendEntries_FullMethodName   = "/rcppb.RCP/AppendEntries"
-	RCP_RequestVote_FullMethodName     = "/rcppb.RCP/RequestVote"
-	RCP_Store_FullMethodName           = "/rcppb.RCP/Store"
-	RCP_Delete_FullMethodName          = "/rcppb.RCP/Delete"
-	RCP_Get_FullMethodName             = "/rcppb.RCP/Get"
-	RCP_SetStatus_FullMethodName       = "/rcppb.RCP/SetStatus"
-	RCP_Partition_FullMethodName       = "/rcppb.RCP/Partition"
-	RCP_Delay_FullMethodName           = "/rcppb.RCP/Delay"
-	RCP_DepositChecking_FullMethodName = "/rcppb.RCP/DepositChecking"
-	RCP_SendPayment_FullMethodName     = "/rcppb.RCP/SendPayment"
-	RCP_WriteCheck_FullMethodName      = "/rcppb.RCP/WriteCheck"
-	RCP_GetBalance_FullMethodName      = "/rcppb.RCP/GetBalance"
-	RCP_Amalgamate_FullMethodName      = "/rcppb.RCP/Amalgamate"
-	RCP_TransactSavings_FullMethodName = "/rcppb.RCP/TransactSavings"
+	RCP_AppendEntries_FullMethodName = "/rcppb.RCP/AppendEntries"
+	RCP_RequestVote_FullMethodName   = "/rcppb.RCP/RequestVote"
+	RCP_Store_FullMethodName         = "/rcppb.RCP/Store"
+	RCP_Delete_FullMethodName        = "/rcppb.RCP/Delete"
+	RCP_Get_FullMethodName           = "/rcppb.RCP/Get"
+	RCP_SetStatus_FullMethodName     = "/rcppb.RCP/SetStatus"
+	RCP_Partition_FullMethodName     = "/rcppb.RCP/Partition"
+	RCP_Delay_FullMethodName         = "/rcppb.RCP/Delay"
 )
 
 // RCPClient is the client API for RCP service.
@@ -48,12 +42,6 @@ type RCPClient interface {
 	SetStatus(ctx context.Context, in *wrapperspb.BoolValue, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
 	Partition(ctx context.Context, in *PartitionReq, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
 	Delay(ctx context.Context, in *DelayRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
-	DepositChecking(ctx context.Context, in *DepositCheckingRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
-	SendPayment(ctx context.Context, in *SendPaymentRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
-	WriteCheck(ctx context.Context, in *WriteCheckRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
-	GetBalance(ctx context.Context, in *GetBalanceRequest, opts ...grpc.CallOption) (*GetBalanceResponse, error)
-	Amalgamate(ctx context.Context, in *AmalgamateRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
-	TransactSavings(ctx context.Context, in *TransactSavingsRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
 }
 
 type rCPClient struct {
@@ -144,66 +132,6 @@ func (c *rCPClient) Delay(ctx context.Context, in *DelayRequest, opts ...grpc.Ca
 	return out, nil
 }
 
-func (c *rCPClient) DepositChecking(ctx context.Context, in *DepositCheckingRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(wrapperspb.BoolValue)
-	err := c.cc.Invoke(ctx, RCP_DepositChecking_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *rCPClient) SendPayment(ctx context.Context, in *SendPaymentRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(wrapperspb.BoolValue)
-	err := c.cc.Invoke(ctx, RCP_SendPayment_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *rCPClient) WriteCheck(ctx context.Context, in *WriteCheckRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(wrapperspb.BoolValue)
-	err := c.cc.Invoke(ctx, RCP_WriteCheck_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *rCPClient) GetBalance(ctx context.Context, in *GetBalanceRequest, opts ...grpc.CallOption) (*GetBalanceResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetBalanceResponse)
-	err := c.cc.Invoke(ctx, RCP_GetBalance_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *rCPClient) Amalgamate(ctx context.Context, in *AmalgamateRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(wrapperspb.BoolValue)
-	err := c.cc.Invoke(ctx, RCP_Amalgamate_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *rCPClient) TransactSavings(ctx context.Context, in *TransactSavingsRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(wrapperspb.BoolValue)
-	err := c.cc.Invoke(ctx, RCP_TransactSavings_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // RCPServer is the server API for RCP service.
 // All implementations must embed UnimplementedRCPServer
 // for forward compatibility.
@@ -216,12 +144,6 @@ type RCPServer interface {
 	SetStatus(context.Context, *wrapperspb.BoolValue) (*wrapperspb.BoolValue, error)
 	Partition(context.Context, *PartitionReq) (*wrapperspb.BoolValue, error)
 	Delay(context.Context, *DelayRequest) (*wrapperspb.BoolValue, error)
-	DepositChecking(context.Context, *DepositCheckingRequest) (*wrapperspb.BoolValue, error)
-	SendPayment(context.Context, *SendPaymentRequest) (*wrapperspb.BoolValue, error)
-	WriteCheck(context.Context, *WriteCheckRequest) (*wrapperspb.BoolValue, error)
-	GetBalance(context.Context, *GetBalanceRequest) (*GetBalanceResponse, error)
-	Amalgamate(context.Context, *AmalgamateRequest) (*wrapperspb.BoolValue, error)
-	TransactSavings(context.Context, *TransactSavingsRequest) (*wrapperspb.BoolValue, error)
 	mustEmbedUnimplementedRCPServer()
 }
 
@@ -255,24 +177,6 @@ func (UnimplementedRCPServer) Partition(context.Context, *PartitionReq) (*wrappe
 }
 func (UnimplementedRCPServer) Delay(context.Context, *DelayRequest) (*wrapperspb.BoolValue, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Delay not implemented")
-}
-func (UnimplementedRCPServer) DepositChecking(context.Context, *DepositCheckingRequest) (*wrapperspb.BoolValue, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DepositChecking not implemented")
-}
-func (UnimplementedRCPServer) SendPayment(context.Context, *SendPaymentRequest) (*wrapperspb.BoolValue, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method SendPayment not implemented")
-}
-func (UnimplementedRCPServer) WriteCheck(context.Context, *WriteCheckRequest) (*wrapperspb.BoolValue, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method WriteCheck not implemented")
-}
-func (UnimplementedRCPServer) GetBalance(context.Context, *GetBalanceRequest) (*GetBalanceResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetBalance not implemented")
-}
-func (UnimplementedRCPServer) Amalgamate(context.Context, *AmalgamateRequest) (*wrapperspb.BoolValue, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Amalgamate not implemented")
-}
-func (UnimplementedRCPServer) TransactSavings(context.Context, *TransactSavingsRequest) (*wrapperspb.BoolValue, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method TransactSavings not implemented")
 }
 func (UnimplementedRCPServer) mustEmbedUnimplementedRCPServer() {}
 func (UnimplementedRCPServer) testEmbeddedByValue()             {}
@@ -439,114 +343,6 @@ func _RCP_Delay_Handler(srv interface{}, ctx context.Context, dec func(interface
 	return interceptor(ctx, in, info, handler)
 }
 
-func _RCP_DepositChecking_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DepositCheckingRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RCPServer).DepositChecking(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RCP_DepositChecking_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RCPServer).DepositChecking(ctx, req.(*DepositCheckingRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RCP_SendPayment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(SendPaymentRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RCPServer).SendPayment(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RCP_SendPayment_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RCPServer).SendPayment(ctx, req.(*SendPaymentRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RCP_WriteCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(WriteCheckRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RCPServer).WriteCheck(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RCP_WriteCheck_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RCPServer).WriteCheck(ctx, req.(*WriteCheckRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RCP_GetBalance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetBalanceRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RCPServer).GetBalance(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RCP_GetBalance_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RCPServer).GetBalance(ctx, req.(*GetBalanceRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RCP_Amalgamate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(AmalgamateRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RCPServer).Amalgamate(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RCP_Amalgamate_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RCPServer).Amalgamate(ctx, req.(*AmalgamateRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RCP_TransactSavings_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(TransactSavingsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RCPServer).TransactSavings(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RCP_TransactSavings_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RCPServer).TransactSavings(ctx, req.(*TransactSavingsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // RCP_ServiceDesc is the grpc.ServiceDesc for RCP service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -585,30 +381,6 @@ var RCP_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delay",
 			Handler:    _RCP_Delay_Handler,
-		},
-		{
-			MethodName: "DepositChecking",
-			Handler:    _RCP_DepositChecking_Handler,
-		},
-		{
-			MethodName: "SendPayment",
-			Handler:    _RCP_SendPayment_Handler,
-		},
-		{
-			MethodName: "WriteCheck",
-			Handler:    _RCP_WriteCheck_Handler,
-		},
-		{
-			MethodName: "GetBalance",
-			Handler:    _RCP_GetBalance_Handler,
-		},
-		{
-			MethodName: "Amalgamate",
-			Handler:    _RCP_Amalgamate_Handler,
-		},
-		{
-			MethodName: "TransactSavings",
-			Handler:    _RCP_TransactSavings_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

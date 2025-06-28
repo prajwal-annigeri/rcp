@@ -15,14 +15,15 @@ import (
 
 func (node *Node) establishConns() error {
 	// Iterate through every node in nodeMap and create gRPC clients for every other node
-	for id, port := range node.NodeMap {
+	for id, address := range node.NodeAddressMap {
 		if node.Id != id && node.ConnMap[id] == nil {
-			if node.NodeMap[id] == "" {
-				return errors.New("no node:port mapping")
+			if node.NodeAddressMap[id] == "" {
+				return errors.New("no node:address mapping")
 			}
 			log.Printf("Establishing connection from %s to %s\n", node.Id, id)
 			var conn *grpc.ClientConn
-			conn, err := grpc.NewClient(port, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			log.Printf("Connecting to %s", address)
+			conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 			if err != nil {
 				return err
 			}

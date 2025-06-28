@@ -42,7 +42,8 @@ type Node struct {
 	Id                             string            `json:"id"`
 	Port                           string            `json:"port"`
 	HttpPort                       string            `json:"http_port"`
-	NodeMap                        map[string]string `json:"nodeMap"`
+	IP                             string            `json:"ip"`
+	NodeAddressMap                 map[string]string
 	ConnMap                        map[string]*grpc.ClientConn
 	ClientMap                      map[string]rcppb.RCPClient
 	Live                           bool
@@ -114,15 +115,13 @@ func NewNode(thisNodeId, protocol string, persistent bool) (*Node, error) {
 		log.Fatalf("Failed to unmarshal JSON: %s", err)
 	}
 
-	
-
 	matchIndexMap := make(map[string]int)
 	nodes = config.Nodes
 
 	newNode := &Node{
-		Id:                    thisNodeId,
-		currentTerm:           0,
-		K:                     config.K,
+		Id:          thisNodeId,
+		currentTerm: 0,
+		K:           config.K,
 		// db:                    db,
 		// DBCloseFunc:           dbCloseFunc,
 		lastApplied:           -1,
@@ -131,7 +130,7 @@ func NewNode(thisNodeId, protocol string, persistent bool) (*Node, error) {
 		lastIndex:             -1,
 		lastTerm:              -1,
 		matchIndex:            matchIndexMap,
-		NodeMap:               make(map[string]string),
+		NodeAddressMap:        make(map[string]string),
 		ConnMap:               make(map[string]*grpc.ClientConn),
 		Live:                  true,
 		ClientMap:             make(map[string]rcppb.RCPClient),
@@ -154,7 +153,6 @@ func NewNode(thisNodeId, protocol string, persistent bool) (*Node, error) {
 		newNode.db = db
 		newNode.DBCloseFunc = dbCloseFunc
 	}
-	
 
 	switch protocol {
 	case "rcp":
@@ -179,7 +177,7 @@ func NewNode(thisNodeId, protocol string, persistent bool) (*Node, error) {
 			newNode.HttpPort = node.HttpPort
 			newNode.Port = node.Port
 		}
-		newNode.NodeMap[node.Id] = node.Port
+		newNode.NodeAddressMap[node.Id] = fmt.Sprintf("%s%s", node.IP, node.Port)
 		newNode.serverStatusMap.Store(node.Id, true)
 		newNode.reachableNodes[node.Id] = struct{}{}
 		newNode.failedAppendEntries.Store(thisNodeId, 0)
@@ -187,8 +185,8 @@ func NewNode(thisNodeId, protocol string, persistent bool) (*Node, error) {
 	}
 
 	// initialize current alive to number of nodes in the config file
-	newNode.currAlive = len(newNode.NodeMap)
-	if newNode.NodeMap[thisNodeId] == "" {
+	newNode.currAlive = len(newNode.NodeAddressMap)
+	if newNode.NodeAddressMap[thisNodeId] == "" {
 		log.Fatalf("No port specified for ID: %s in config JSON", thisNodeId)
 	}
 

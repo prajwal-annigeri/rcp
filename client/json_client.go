@@ -64,8 +64,8 @@ func readAndSend(filename string, grpcClientMap map[string]rcppb.RCPClient) {
 
 func doOp(op OperationStruct, grpcClientMap map[string]rcppb.RCPClient, i int) {
 	log.Printf("--- Operation %d ---\n", i)
-	var begin time.Time
-	var dur time.Duration
+	// var begin time.Time
+	// var dur time.Duration
 	switch op.Operation {
 
 	case "KV_Store":
@@ -129,142 +129,142 @@ func doOp(op OperationStruct, grpcClientMap map[string]rcppb.RCPClient, i int) {
 		} else {
 			log.Printf("Set delay %s -> %s %dms", op.SrcNodeID, op.DstNodeID, *op.Delay)
 		}
-	case "get_balance":
-		if op.AccountID == "" {
-			log.Println("Error: get_balance requires account_id")
-			return
-		}
-		if op.NodeID == "" {
-			log.Println("Error: no node_id")
-			return
-		}
-		log.Printf("Operation: Get Balance\n")
-		log.Printf("Account ID: %s\n", op.AccountID)
-		grpcClient, ok := grpcClientMap[op.NodeID]
-		if !ok {
-			log.Printf("No gRPC client for %s", op.NodeID)
-			return
-		}
-		begin = time.Now()
-		resp, err := grpcClient.GetBalance(context.Background(), &rcppb.GetBalanceRequest{AccountId: op.AccountID})
-		dur = time.Since(begin)
-		if err != nil {
-			log.Printf("Error response: %v", err)
-		} else {
-			log.Printf("Checking: %d    Savings: %d", resp.CheckingBalance, resp.SavingsBalance)
-		}
+	// case "get_balance":
+	// 	if op.AccountID == "" {
+	// 		log.Println("Error: get_balance requires account_id")
+	// 		return
+	// 	}
+	// 	if op.NodeID == "" {
+	// 		log.Println("Error: no node_id")
+	// 		return
+	// 	}
+	// 	log.Printf("Operation: Get Balance\n")
+	// 	log.Printf("Account ID: %s\n", op.AccountID)
+	// 	grpcClient, ok := grpcClientMap[op.NodeID]
+	// 	if !ok {
+	// 		log.Printf("No gRPC client for %s", op.NodeID)
+	// 		return
+	// 	}
+	// 	begin = time.Now()
+	// 	resp, err := grpcClient.GetBalance(context.Background(), &rcppb.GetBalanceRequest{AccountId: op.AccountID})
+	// 	dur = time.Since(begin)
+	// 	if err != nil {
+	// 		log.Printf("Error response: %v", err)
+	// 	} else {
+	// 		log.Printf("Checking: %d    Savings: %d", resp.CheckingBalance, resp.SavingsBalance)
+	// 	}
 
-		log.Printf("Time taken op %d: %v", i, dur)
-		latencySlice = append(latencySlice, dur.Milliseconds())
-		// go updateMetric(end)
-	case "deposit_checking":
-		if op.AccountID == "" || op.Amount == nil || op.NodeID == "" {
-			log.Println("Error: deposit_checking requires account_id, node_id and amount")
-			return
-		}
-		log.Printf("Operation: Deposit Checking\n")
-		log.Printf("Account ID: %s\n", op.AccountID)
-		log.Printf("Amount: %d\n", *op.Amount)
-		grpcClient, ok := grpcClientMap[op.NodeID]
-		if !ok {
-			log.Printf("No gRPC client for %s", op.NodeID)
-			return
-		}
-		begin = time.Now()
-		_, err := grpcClient.DepositChecking(context.Background(), &rcppb.DepositCheckingRequest{AccountId: op.AccountID, Amount: *op.Amount})
-		dur = time.Since(begin)
-		if err != nil {
-			log.Printf("Error response: %v", err)
-		}
+	// 	log.Printf("Time taken op %d: %v", i, dur)
+	// 	latencySlice = append(latencySlice, dur.Milliseconds())
+	// 	// go updateMetric(end)
+	// case "deposit_checking":
+	// 	if op.AccountID == "" || op.Amount == nil || op.NodeID == "" {
+	// 		log.Println("Error: deposit_checking requires account_id, node_id and amount")
+	// 		return
+	// 	}
+	// 	log.Printf("Operation: Deposit Checking\n")
+	// 	log.Printf("Account ID: %s\n", op.AccountID)
+	// 	log.Printf("Amount: %d\n", *op.Amount)
+	// 	grpcClient, ok := grpcClientMap[op.NodeID]
+	// 	if !ok {
+	// 		log.Printf("No gRPC client for %s", op.NodeID)
+	// 		return
+	// 	}
+	// 	begin = time.Now()
+	// 	_, err := grpcClient.DepositChecking(context.Background(), &rcppb.DepositCheckingRequest{AccountId: op.AccountID, Amount: *op.Amount})
+	// 	dur = time.Since(begin)
+	// 	if err != nil {
+	// 		log.Printf("Error response: %v", err)
+	// 	}
 
-		latencySlice = append(latencySlice, dur.Milliseconds())
-		go updateMetric(dur)
-	case "send_payment":
-		if op.SrcAccountID == "" || op.DestAccountID == "" || op.Amount == nil {
-			log.Println("Error: send_payment requires src_account_id, dest_account_id, and amount")
-			return
-		}
-		log.Printf("Operation: Send Payment\n")
-		log.Printf("Source Account ID: %s\n", op.SrcAccountID)
-		log.Printf("Destination Account ID: %s\n", op.DestAccountID)
-		log.Printf("Amount: %d\n", *op.Amount)
-		grpcClient, ok := grpcClientMap[op.NodeID]
-		if !ok {
-			log.Printf("No gRPC client for %s", op.NodeID)
-			return
-		}
-		begin = time.Now()
-		_, err := grpcClient.SendPayment(context.Background(), &rcppb.SendPaymentRequest{AccountIdFrom: op.SrcAccountID, AccountIdTo: op.DestAccountID, Amount: *op.Amount})
-		dur = time.Since(begin)
-		if err != nil {
-			log.Printf("Error response: %v", err)
-		}
-		latencySlice = append(latencySlice, dur.Milliseconds())
-		go updateMetric(dur)
-	case "write_check":
-		if op.AccountID == "" || op.Amount == nil {
-			log.Println("Error: write_check requires account_id and amount")
-			return
-		}
-		log.Printf("Operation: Write Check\n")
-		log.Printf("Account ID: %s\n", op.AccountID)
-		log.Printf("Amount: %d\n", *op.Amount)
-		grpcClient, ok := grpcClientMap[op.NodeID]
-		if !ok {
-			log.Printf("No gRPC client for %s", op.NodeID)
-			return
-		}
-		begin = time.Now()
-		_, err := grpcClient.WriteCheck(context.Background(), &rcppb.WriteCheckRequest{AccountId: op.AccountID, Amount: *op.Amount})
-		dur = time.Since(begin)
-		if err != nil {
-			log.Printf("Error response: %v", err)
-		}
-		latencySlice = append(latencySlice, dur.Milliseconds())
-		go updateMetric(dur)
+	// 	latencySlice = append(latencySlice, dur.Milliseconds())
+	// 	go updateMetric(dur)
+	// case "send_payment":
+	// 	if op.SrcAccountID == "" || op.DestAccountID == "" || op.Amount == nil {
+	// 		log.Println("Error: send_payment requires src_account_id, dest_account_id, and amount")
+	// 		return
+	// 	}
+	// 	log.Printf("Operation: Send Payment\n")
+	// 	log.Printf("Source Account ID: %s\n", op.SrcAccountID)
+	// 	log.Printf("Destination Account ID: %s\n", op.DestAccountID)
+	// 	log.Printf("Amount: %d\n", *op.Amount)
+	// 	grpcClient, ok := grpcClientMap[op.NodeID]
+	// 	if !ok {
+	// 		log.Printf("No gRPC client for %s", op.NodeID)
+	// 		return
+	// 	}
+	// 	begin = time.Now()
+	// 	_, err := grpcClient.SendPayment(context.Background(), &rcppb.SendPaymentRequest{AccountIdFrom: op.SrcAccountID, AccountIdTo: op.DestAccountID, Amount: *op.Amount})
+	// 	dur = time.Since(begin)
+	// 	if err != nil {
+	// 		log.Printf("Error response: %v", err)
+	// 	}
+	// 	latencySlice = append(latencySlice, dur.Milliseconds())
+	// 	go updateMetric(dur)
+	// case "write_check":
+	// 	if op.AccountID == "" || op.Amount == nil {
+	// 		log.Println("Error: write_check requires account_id and amount")
+	// 		return
+	// 	}
+	// 	log.Printf("Operation: Write Check\n")
+	// 	log.Printf("Account ID: %s\n", op.AccountID)
+	// 	log.Printf("Amount: %d\n", *op.Amount)
+	// 	grpcClient, ok := grpcClientMap[op.NodeID]
+	// 	if !ok {
+	// 		log.Printf("No gRPC client for %s", op.NodeID)
+	// 		return
+	// 	}
+	// 	begin = time.Now()
+	// 	_, err := grpcClient.WriteCheck(context.Background(), &rcppb.WriteCheckRequest{AccountId: op.AccountID, Amount: *op.Amount})
+	// 	dur = time.Since(begin)
+	// 	if err != nil {
+	// 		log.Printf("Error response: %v", err)
+	// 	}
+	// 	latencySlice = append(latencySlice, dur.Milliseconds())
+	// 	go updateMetric(dur)
 
-	case "amalgamate":
-		if op.SrcAccountID == "" || op.DestAccountID == "" {
-			log.Println("Error: amalgamate requires src_account_id and dest_account_id")
-			return
-		}
-		log.Printf("Operation: Amalgamate\n")
-		log.Printf("Source Account ID: %s\n", op.SrcAccountID)
-		log.Printf("Destination Account ID: %s\n", op.DestAccountID)
-		grpcClient, ok := grpcClientMap[op.NodeID]
-		if !ok {
-			log.Printf("No gRPC client for %s", op.NodeID)
-			return
-		}
-		begin = time.Now()
-		_, err := grpcClient.Amalgamate(context.Background(), &rcppb.AmalgamateRequest{AccountIdFrom: op.SrcAccountID, AccountIdTo: op.DestAccountID})
-		dur = time.Since(begin)
-		if err != nil {
-			log.Printf("Error response: %v", err)
-		}
-		latencySlice = append(latencySlice, dur.Milliseconds())
-		go updateMetric(dur)
-	case "transact_savings":
-		if op.AccountID == "" || op.Amount == nil {
-			log.Println("Error: transact_savings requires src_account_id and amount")
-			return
-		}
-		log.Printf("Operation: Transact Savings\n")
-		log.Printf("Source Account ID: %s\n", op.SrcAccountID)
-		log.Printf("Amount: %d\n", *op.Amount)
-		grpcClient, ok := grpcClientMap[op.NodeID]
-		if !ok {
-			log.Printf("No gRPC client for %s", op.NodeID)
-			return
-		}
-		begin = time.Now()
-		_, err := grpcClient.TransactSavings(context.Background(), &rcppb.TransactSavingsRequest{AccountId: op.AccountID, Amount: *op.Amount})
-		dur = time.Since(begin)
-		if err != nil {
-			log.Printf("Error response: %v", err)
-		}
-		latencySlice = append(latencySlice, dur.Milliseconds())
-		go updateMetric(dur)
+	// case "amalgamate":
+	// 	if op.SrcAccountID == "" || op.DestAccountID == "" {
+	// 		log.Println("Error: amalgamate requires src_account_id and dest_account_id")
+	// 		return
+	// 	}
+	// 	log.Printf("Operation: Amalgamate\n")
+	// 	log.Printf("Source Account ID: %s\n", op.SrcAccountID)
+	// 	log.Printf("Destination Account ID: %s\n", op.DestAccountID)
+	// 	grpcClient, ok := grpcClientMap[op.NodeID]
+	// 	if !ok {
+	// 		log.Printf("No gRPC client for %s", op.NodeID)
+	// 		return
+	// 	}
+	// 	begin = time.Now()
+	// 	_, err := grpcClient.Amalgamate(context.Background(), &rcppb.AmalgamateRequest{AccountIdFrom: op.SrcAccountID, AccountIdTo: op.DestAccountID})
+	// 	dur = time.Since(begin)
+	// 	if err != nil {
+	// 		log.Printf("Error response: %v", err)
+	// 	}
+	// 	latencySlice = append(latencySlice, dur.Milliseconds())
+	// 	go updateMetric(dur)
+	// case "transact_savings":
+	// 	if op.AccountID == "" || op.Amount == nil {
+	// 		log.Println("Error: transact_savings requires src_account_id and amount")
+	// 		return
+	// 	}
+	// 	log.Printf("Operation: Transact Savings\n")
+	// 	log.Printf("Source Account ID: %s\n", op.SrcAccountID)
+	// 	log.Printf("Amount: %d\n", *op.Amount)
+	// 	grpcClient, ok := grpcClientMap[op.NodeID]
+	// 	if !ok {
+	// 		log.Printf("No gRPC client for %s", op.NodeID)
+	// 		return
+	// 	}
+	// 	begin = time.Now()
+	// 	_, err := grpcClient.TransactSavings(context.Background(), &rcppb.TransactSavingsRequest{AccountId: op.AccountID, Amount: *op.Amount})
+	// 	dur = time.Since(begin)
+	// 	if err != nil {
+	// 		log.Printf("Error response: %v", err)
+	// 	}
+	// 	latencySlice = append(latencySlice, dur.Milliseconds())
+	// 	go updateMetric(dur)
 
 	default:
 		log.Printf("Unknown operation: %s\n", op.Operation)
