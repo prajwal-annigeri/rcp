@@ -50,6 +50,7 @@ type Node struct {
 	Live                           bool
 	DBCloseFunc                    func() error
 	K                              int
+	BatchSize                      int
 	isLeader                       bool
 	isCandidate                    bool
 	electionTimer                  *time.Timer
@@ -100,8 +101,9 @@ type Node struct {
 
 // struct to read in the config file
 type ConfigFile struct {
-	K     int     `json:"K"`
-	Nodes []*Node `json:"nodes"`
+	K         int     `json:"K"`
+	BatchSize int     `json:"batch_size`
+	Nodes     []*Node `json:"nodes"`
 }
 
 // constructor
@@ -134,7 +136,6 @@ func NewNode(thisNodeId, protocol string, persistent bool, configString, configF
 	for _, node := range config.Nodes {
 		log.Printf("%s %s %s %s", node.Id, node.IP, node.Port, node.HttpPort)
 	}
-	
 
 	matchIndexMap := make(map[string]int)
 	nodes = config.Nodes
@@ -143,6 +144,7 @@ func NewNode(thisNodeId, protocol string, persistent bool, configString, configF
 		Id:                    thisNodeId,
 		currentTerm:           0,
 		K:                     config.K,
+		BatchSize:             config.BatchSize,
 		lastApplied:           -1,
 		commitIndex:           -1,
 		execIndex:             -1,
@@ -226,7 +228,7 @@ func (node *Node) Start() {
 	// establish gRPC connections with ohter nodes
 	node.establishConns()
 
-	for ;!node.isReady; {
+	for !node.isReady {
 		time.Sleep(10 * time.Millisecond)
 	}
 
