@@ -111,7 +111,7 @@ func NewNode(thisNodeId, protocol string, persistent bool, configString, configF
 		// reads config file
 		nodesJson, err := os.Open(configFile)
 		if err != nil {
-			log.Fatalf("Error with reading config JSON (%s): %s\n", configFile, err)
+			log.Fatalf("Error with reading config JSON (%s) Provide config as command line argument --config or --config-file or put config in nodes.json: %s\n", configFile, err)
 		}
 		defer nodesJson.Close()
 
