@@ -3,18 +3,15 @@ package node
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"rcp/constants"
 	"rcp/rcppb"
 	"time"
-	"rcp/constants"
-)
 
-type StoreRequest struct {
-	Key    string `json:"key"`
-	Value  string `json:"value"`
-	Bucket string `json:"bucket"`
-}
+	"google.golang.org/protobuf/types/known/wrapperspb"
+)
 
 type StoreResponse struct {
 	Success bool   `json:"success"`
@@ -36,11 +33,17 @@ type ErrorResponse struct {
 	Success bool   `json:"success"`
 }
 
+type CauseFailureResponse struct {
+	Success    bool   `json:"success"`
+	NodeKilled string `json:"node_killed"`
+}
+
 func (node *Node) startHttpServer() {
 	log.Printf("Starting HTTP server on port %s", node.HttpPort)
 	http.HandleFunc("/put", node.putHandler)
 	http.HandleFunc("/get", node.getHandler)
 	http.HandleFunc("/delete", node.deleteHandler)
+	http.HandleFunc("/cause-failure", node.causeFailureHandler)
 	err := http.ListenAndServe(node.HttpPort, nil)
 	if err != nil {
 		log.Printf("Failed to start HTTP server: %v", err)
@@ -146,4 +149,63 @@ func (node *Node) sendError(w http.ResponseWriter, message string, statusCode in
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	json.NewEncoder(w).Encode(ErrorResponse{Error: message, Success: false})
+}
+
+func (node *Node) causeFailureHandler(w http.ResponseWriter, r *http.Request) {
+	failureType := r.URL.Query().Get("type")
+	log.Printf("Got cause-failure of type %s", failureType)
+	var nodeToKill string
+	switch failureType {
+	case "leader":
+		currentLeader, ok := node.votedFor.Load(node.currentTerm)
+		if !ok {
+			node.sendError(w, "BUG() no leader", http.StatusInternalServerError)
+			return
+		}
+		nodeToKill = currentLeader.(string)
+	case "non-leader":
+		currentLeader, ok := node.votedFor.Load(node.currentTerm)
+		if !ok {
+			node.sendError(w, "BUG() no leader", http.StatusInternalServerError)
+			return
+		}
+
+		for nodeID := range node.ClientMap {
+			if nodeID != currentLeader {
+				status, _ := node.serverStatusMap.Load(nodeID)
+				if status.(bool) {
+					nodeToKill = nodeID
+					break
+				}
+			}
+		}
+	case "random":
+		for nodeID := range node.ClientMap {
+			status, _ := node.serverStatusMap.Load(nodeID)
+			if status.(bool) {
+				nodeToKill = nodeID
+				break
+			}
+		}
+	default:
+		node.sendError(w, "invalid failure type", http.StatusBadRequest)
+		return
+	}
+
+	if nodeToKill == node.Id {
+		_, err := node.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: false})
+		if err != nil {
+			node.sendError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		RPCClient, ok := node.ClientMap[nodeToKill]
+		if !ok {
+			node.sendError(w, fmt.Sprintf("Invalid server or no gRPC client for '%s'", nodeToKill), http.StatusInternalServerError)
+			return
+		}
+		RPCClient.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: false})
+	}
+	
+	node.sendJSON(w, CauseFailureResponse{Success: true, NodeKilled: nodeToKill})
 }

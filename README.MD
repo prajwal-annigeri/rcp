@@ -1,7 +1,5 @@
 # Reconfigurable Consensus Protocol
 
-## Setup locally
-
 ## Requirements
 - Go 1.23.x
 
@@ -27,3 +25,11 @@
 - Run `go mod tidy` to install the required dependencies
 - Modify `nodes.json` to set number of nodes and value of 'K'
 - Run `python3 init.py` which will open up a terminal window for each node
+
+## Failure Client
+- Failure client is used to cause failures at specified times
+- In the `failure_client` directory
+- Failure client is used to cause failures at specified times
+- Use the `failure_config.json` to configure the nodes and the failures
+- `cd failure_client` and `go run .` to run the failure client
+- Failures can be of `leader` or `non-leader` or `random`. The `time` is the time in seconds to wait from when the client started (with `go run .`)  to cause the failure
