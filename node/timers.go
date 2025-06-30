@@ -3,7 +3,6 @@ package node
 import (
 	"context"
 	"log"
-	"rcp/constants"
 	"rcp/rcppb"
 	"strconv"
 	"time"
@@ -57,7 +56,7 @@ func (node *Node) sendHeartbeats() {
 			var logsToSend []*rcppb.LogEntry
 		loop:
 			for i := 1; ; {
-				if len(logsToSend) > constants.MaxLogsPerAppendEntry {
+				if len(logsToSend) > node.BatchSize {
 					break
 				}
 				select {
@@ -144,14 +143,14 @@ func (node *Node) sendHeartbeats() {
 					if successResponses == node.replicationQuorum {
 						prevCommit := node.commitIndex
 						node.commitIndex = node.lastIndex
-						go node.doCallbacks(prevCommit + 1, node.commitIndex)
+						go node.doCallbacks(prevCommit+1, node.commitIndex)
 						// log.Printf("waiter here: %v", time.Since(now))
 						if node.isPersistent {
 							waitAfterCommit = time.After(10 * time.Millisecond)
 						} else {
 							waitAfterCommit = time.After(100 * time.Microsecond)
 						}
-						
+
 						if len(logsToSend) > 0 {
 							log.Printf("LOGX (%d) Committed index %d, Setting shorter timer hopefully: %v, abs time: %v", counter, node.commitIndex, time.Since(begin3), time.Now().UnixMilli())
 						}
@@ -192,7 +191,7 @@ func (node *Node) constructAppendEntriesRequest(term int64, nodeId string) (*rcp
 			return nil, -1, err
 		}
 	}
-	
+
 	prevLogTerm := int64(-1)
 	if nextIndex.(int64)-1 >= 0 {
 		if node.isPersistent {
@@ -210,7 +209,7 @@ func (node *Node) constructAppendEntriesRequest(term int64, nodeId string) (*rcp
 			}
 			prevLogTerm = prevLogEntry.Term
 		}
-		
+
 	}
 	// nextLogIndex, _ := node.nextIndex.Load(nodeId)
 	delayRaw, ok := node.delays.Load(nodeId)

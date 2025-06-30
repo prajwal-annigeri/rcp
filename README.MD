@@ -19,7 +19,7 @@
 ### Docker
 - Build docker image `docker build -t rcp .`
 - Run docker container `docker run -p {host_port}:{container_http_server_port} -p {host_port:container_grpc_server_port} rcp --id {node_id} --logs --config='{config JSON here}'`
-    - Example `docker run -p 8080:8080 -p 7080:7080 rcp --id S1 --logs --config='{"K":2,"nodes":[{"id":"S1","port":":8080","http_port":":7080","ip":"127.0.0.1"},{"id":"S2","port":":8081","http_port":":7081","ip":"127.0.0.1"}]}'`
+    - Example `docker run -p 8080:8080 -p 7080:7080 rcp --id S1 --logs --config='{"K":2,"batch_size":100,"nodes":[{"id":"S1","port":":8080","http_port":":7080","ip":"127.0.0.1"},{"id":"S2","port":":8081","http_port":":7081","ip":"127.0.0.1"}]}'`
 
 ### MacOS
 - Run `go mod tidy` to install the required dependencies
