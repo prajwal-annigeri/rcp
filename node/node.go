@@ -102,7 +102,7 @@ type Node struct {
 // struct to read in the config file
 type ConfigFile struct {
 	K         int     `json:"K"`
-	BatchSize int     `json:"batch_size`
+	BatchSize int     `json:"batch_size"`
 	Nodes     []*Node `json:"nodes"`
 }
 
