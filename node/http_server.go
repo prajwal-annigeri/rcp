@@ -51,6 +51,11 @@ func (node *Node) startHttpServer() {
 }
 
 func (node *Node) putHandler(w http.ResponseWriter, r *http.Request) {
+	if !node.Live {
+		node.sendError(w, "not alive", http.StatusExpectationFailed)
+		return
+	}
+
 	if r.Method != http.MethodPost {
 		node.sendError(w, "Only POST allowed", http.StatusMethodNotAllowed)
 		return
@@ -86,6 +91,11 @@ func (node *Node) putHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (node *Node) getHandler(w http.ResponseWriter, r *http.Request) {
+	if !node.Live {
+		node.sendError(w, "not alive", http.StatusExpectationFailed)
+		return
+	}
+
 	if r.Method != http.MethodGet {
 		node.sendError(w, "Only GET allowed", http.StatusMethodNotAllowed)
 		return
@@ -113,6 +123,10 @@ func (node *Node) getHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (node *Node) deleteHandler(w http.ResponseWriter, r *http.Request) {
+	if !node.Live {
+		node.sendError(w, "not alive", http.StatusExpectationFailed)
+		return
+	}
 
 	if r.Method != http.MethodDelete {
 		node.sendError(w, "Only DELETE allowed", http.StatusMethodNotAllowed)

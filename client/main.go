@@ -50,11 +50,12 @@ func displayMenu() {
 	fmt.Println("0. Do operations from file")
 	fmt.Println("1. Send Store Request")
 	fmt.Println("2. Get Value")
-	fmt.Println("3. Kill server")
+	fmt.Println("3. Delete Key")
 	fmt.Println("4. Revive server")
 	fmt.Println("5. Partition")
 	fmt.Println("6. Set Delay")
-	fmt.Println("7. Delete Key")
+	fmt.Println("7. Kill Server (Specific sever)")
+	fmt.Println("8. Kill Server (Leader/Non-Leader)")
 	// fmt.Println("7. Get Balance")
 	// fmt.Println("8. Deposit Checking")
 	// fmt.Println("9. Write Check")
@@ -341,6 +342,26 @@ func sendDelayRequest(grpcClientMap map[string]rcppb.RCPClient) {
 	fmt.Println("Delay request sent! Response: ", resp.Value)
 }
 
+func causeFailureBasedOnRole(grpcClientMap map[string]rcppb.RCPClient) {
+	fmt.Println("Select type of failure to cause:")
+	fmt.Println("1. Leader")
+	fmt.Println("2. Non-leader")
+	fmt.Println("3. Random")
+	var choice int
+	fmt.Scan(&choice)
+	var failureType string
+	switch choice {
+	case 1:
+		failureType = "leader"
+	case 2:
+		failureType = "non-leader"
+	case 3:
+		failureType = "random"
+	}
+	grpcClient := grpcClientMap["S1"]
+	grpcClient.CauseFailure(context.Background(), &rcppb.CauseFailureRequest{Type: failureType})
+}
+
 func main() {
 	config, err := LoadConfig("../nodes.json")
 	if err != nil {
@@ -365,7 +386,7 @@ func main() {
 		case 2:
 			getValue(grpcClientMap)
 		case 3:
-			killServer(grpcClientMap)
+			sendDeleteRequest(grpcClientMap)
 		case 4:
 			reviveServer(grpcClientMap)
 		case 5:
@@ -373,18 +394,9 @@ func main() {
 		case 6:
 			sendDelayRequest(grpcClientMap)
 		case 7:
-			sendDeleteRequest(grpcClientMap)
-			// getBalance(grpcClientMap)
-		// case 8:
-		// 	depositChecking(grpcClientMap)
-		// case 9:
-		// 	writeCheck(grpcClientMap)
-		case 10:
-			printMetric()
-		case 0:
-			readAndSend("ops.json", grpcClientMap)
-		case 12:
-			printTP()
+			killServer(grpcClientMap)
+		case 8:
+			causeFailureBasedOnRole(grpcClientMap)
 		case -1:
 			fmt.Println("Exiting...")
 			return

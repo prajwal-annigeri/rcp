@@ -333,3 +333,57 @@ func (node *Node) Delay(ctx context.Context, req *rcppb.DelayRequest) (*wrappers
 func (node *Node) Healthz(ctx context.Context, req *rcppb.HealthzRequest) (*wrapperspb.BoolValue, error) {
 	return &wrapperspb.BoolValue{Value: true}, nil
 }
+
+func (node *Node) CauseFailure(ctx context.Context, req *rcppb.CauseFailureRequest) (*wrapperspb.BoolValue, error) {
+	failureType := req.Type
+	log.Printf("Got cause-failure of type %s", failureType)
+	var nodeToKill string
+	switch failureType {
+	case "leader":
+		currentLeader, ok := node.votedFor.Load(node.currentTerm)
+		if !ok {
+			return nil, fmt.Errorf("BUG() no leader")
+		}
+		nodeToKill = currentLeader.(string)
+	case "non-leader":
+		currentLeader, ok := node.votedFor.Load(node.currentTerm)
+		if !ok {
+			return nil, fmt.Errorf("BUG() no leader")
+		}
+
+		for nodeID := range node.ClientMap {
+			if nodeID != currentLeader {
+				status, _ := node.serverStatusMap.Load(nodeID)
+				if status.(bool) {
+					nodeToKill = nodeID
+					break
+				}
+			}
+		}
+	case "random":
+		for nodeID := range node.ClientMap {
+			status, _ := node.serverStatusMap.Load(nodeID)
+			if status.(bool) {
+				nodeToKill = nodeID
+				break
+			}
+		}
+	default:
+		return nil, fmt.Errorf("invalid failure type. should be leader/non-leader/random")
+	}
+
+	if nodeToKill == node.Id {
+		_, err := node.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: false})
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		RPCClient, ok := node.ClientMap[nodeToKill]
+		if !ok {
+			return nil, fmt.Errorf("Invalid server or no gRPC client for '%s'", nodeToKill)
+		}
+		RPCClient.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: false})
+	}
+	
+	return &wrapperspb.BoolValue{Value: true}, nil
+}

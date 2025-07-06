@@ -74,6 +74,10 @@ message DelayRequest {
 
 message HealthzRequest {}
 
+message CauseFailureRequest {
+    string type = 1;
+}
+
 service RCP {
     rpc AppendEntries(AppendEntriesReq) returns (AppendEntriesResponse) {}
     rpc RequestVote (RequestVoteReq) returns (RequestVoteResponse) {}
@@ -84,4 +88,5 @@ service RCP {
     rpc Partition(PartitionReq) returns (google.protobuf.BoolValue) {}
     rpc Delay(DelayRequest) returns (google.protobuf.BoolValue) {}
     rpc Healthz(HealthzRequest) returns (google.protobuf.BoolValue) {}
+    rpc CauseFailure(CauseFailureRequest) returns (google.protobuf.BoolValue) {}
 }
