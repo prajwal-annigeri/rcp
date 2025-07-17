@@ -240,7 +240,7 @@ func (node *Node) Start() {
 	go node.sendHeartbeats()
 
 	//start executor goroutine which applies logs to state machine
-	go node.executor()
+	// go node.executor()
 
 	// go node.callbacker()
 

@@ -3,60 +3,59 @@ package node
 import (
 	"encoding/json"
 	"fmt"
-	"rcp/constants"
 	"log"
+	"rcp/constants"
 	"rcp/rcppb"
-	"time"
 
 	bolt "go.etcd.io/bbolt"
 )
 
-// The executor function, runs as a goroutine
-func (node *Node) executor() {
+// // The executor function, runs as a goroutine
+// func (node *Node) executor() {
 
-	for {
-		currCommit := node.commitIndex
-		if currCommit > node.execIndex {
-			if node.isPersistent {
-				err := node.persistentExecuteTill(currCommit)
-				if err != nil {
-					log.Printf("Error executing: %v", err)
-				}
-			} else {
-				err := node.inMemoryExecuteTill(currCommit)
-				if err != nil {
-					log.Printf("Error executing: %v", err)
-				}
-			}
-			
-		}
-		// if node.commitIndex > node.execIndex {
-		// 	logEntry, err := node.db.GetLogAtIndex(node.execIndex + 1)
-		// 	if err == nil {
-		// 		if logEntry.LogType == "store" {
-		// 			node.db.PutKV(logEntry.Key, logEntry.Value, logEntry.Bucket)
-		// 		} else if logEntry.LogType == "delete" {
-		// 			node.db.DeleteKV(logEntry.Key, logEntry.Bucket)
-		// 		} else if logEntry.LogType == "failure" {
-		// 			node.currAlive -= 1
-		// 			node.serverStatusMap.Store(logEntry.NodeId, false)
-		// 			go node.removeFromFailureSet(logEntry.NodeId)
-		// 		} else if logEntry.LogType == "recovery" {
-		// 			node.currAlive += 1
-		// 			node.serverStatusMap.Store(logEntry.NodeId, true)
-		// 			go node.removeFromRecoverySet(logEntry.NodeId)
-		// 		} else if logEntry.LogType == "bank" {
-		// 			node.db.ModifyBalance(logEntry.Transaction1.AccountId, db.AccountType(logEntry.Transaction1.AccountType), logEntry.Transaction1.Amount)
-		// 			if logEntry.Transaction2 != nil {
-		// 				node.db.ModifyBalance(logEntry.Transaction2.AccountId, db.AccountType(logEntry.Transaction2.AccountType), logEntry.Transaction2.Amount)
-		// 			}
-		// 		}
-		// 		node.execIndex += 1
-		// 	}
-		// }
-		time.Sleep(2 * time.Millisecond)
-	}
-}
+// 	for {
+// 		currCommit := node.commitIndex
+// 		if currCommit > node.execIndex {
+// 			if node.isPersistent {
+// 				err := node.persistentExecuteTill(currCommit)
+// 				if err != nil {
+// 					log.Printf("Error executing: %v", err)
+// 				}
+// 			} else {
+// 				err := node.inMemoryExecuteTill(currCommit)
+// 				if err != nil {
+// 					log.Printf("Error executing: %v", err)
+// 				}
+// 			}
+
+// 		}
+// 		// if node.commitIndex > node.execIndex {
+// 		// 	logEntry, err := node.db.GetLogAtIndex(node.execIndex + 1)
+// 		// 	if err == nil {
+// 		// 		if logEntry.LogType == "store" {
+// 		// 			node.db.PutKV(logEntry.Key, logEntry.Value, logEntry.Bucket)
+// 		// 		} else if logEntry.LogType == "delete" {
+// 		// 			node.db.DeleteKV(logEntry.Key, logEntry.Bucket)
+// 		// 		} else if logEntry.LogType == "failure" {
+// 		// 			node.currAlive -= 1
+// 		// 			node.serverStatusMap.Store(logEntry.NodeId, false)
+// 		// 			go node.removeFromFailureSet(logEntry.NodeId)
+// 		// 		} else if logEntry.LogType == "recovery" {
+// 		// 			node.currAlive += 1
+// 		// 			node.serverStatusMap.Store(logEntry.NodeId, true)
+// 		// 			go node.removeFromRecoverySet(logEntry.NodeId)
+// 		// 		} else if logEntry.LogType == "bank" {
+// 		// 			node.db.ModifyBalance(logEntry.Transaction1.AccountId, db.AccountType(logEntry.Transaction1.AccountType), logEntry.Transaction1.Amount)
+// 		// 			if logEntry.Transaction2 != nil {
+// 		// 				node.db.ModifyBalance(logEntry.Transaction2.AccountId, db.AccountType(logEntry.Transaction2.AccountType), logEntry.Transaction2.Amount)
+// 		// 			}
+// 		// 		}
+// 		// 		node.execIndex += 1
+// 		// 	}
+// 		// }
+// 		time.Sleep(2 * time.Millisecond)
+// 	}
+// }
 
 // doCallbacks informs the client that put this log entry about its commit
 // startIndex and endIndex are inclusive
@@ -125,28 +124,28 @@ func (node *Node) persistentExecuteTill(endIndex int64) error {
 
 func (node *Node) inMemoryExecuteTill(endIndex int64) error {
 	for node.execIndex < endIndex {
-			logEntry, err := node.GetInMemoryLog(node.execIndex + 1)
-			if err != nil {
-				log.Printf("executor() No log at index %d", node.execIndex + 1)
-				continue
-			}
+		logEntry, err := node.GetInMemoryLog(node.execIndex + 1)
+		if err != nil {
+			log.Printf("executor() No log at index %d", node.execIndex+1)
+			continue
+		}
 
-			switch logEntry.LogType {
-			case "store":
-				node.inMemoryKV.Store(fmt.Sprintf("%s/%s", logEntry.Bucket, logEntry.Key), logEntry.Value)
-			case "delete":
-				node.inMemoryKV.Delete(fmt.Sprintf("%s/%s", logEntry.Bucket, logEntry.Key))
-			case "failure":
-				node.currAlive -= 1
-				node.serverStatusMap.Store(logEntry.NodeId, false)
-				go node.removeFromFailureSet(logEntry.NodeId)
-			case "recovery":
-				node.currAlive += 1
-				node.serverStatusMap.Store(logEntry.NodeId, true)
-				go node.removeFromRecoverySet(logEntry.NodeId)
-			}
+		switch logEntry.LogType {
+		case "store":
+			node.inMemoryKV.Store(fmt.Sprintf("%s/%s", logEntry.Bucket, logEntry.Key), logEntry.Value)
+		case "delete":
+			node.inMemoryKV.Delete(fmt.Sprintf("%s/%s", logEntry.Bucket, logEntry.Key))
+		case "failure":
+			node.currAlive -= 1
+			node.serverStatusMap.Store(logEntry.NodeId, false)
+			go node.removeFromFailureSet(logEntry.NodeId)
+		case "recovery":
+			node.currAlive += 1
+			node.serverStatusMap.Store(logEntry.NodeId, true)
+			go node.removeFromRecoverySet(logEntry.NodeId)
+		}
 
-			node.execIndex++
+		node.execIndex++
 	}
 	return nil
 }
@@ -186,11 +185,11 @@ func (node *Node) inMemoryExecuteTill(endIndex int64) error {
 // 			return nil
 
 // 		})
-		// if node.commitIndex > currIndex {
-		// 	currIndex += 1
-		// 	go node.doCallback(currIndex)
-		// }
-		// time.Sleep(2 * time.Millisecond)
+// if node.commitIndex > currIndex {
+// 	currIndex += 1
+// 	go node.doCallback(currIndex)
+// }
+// time.Sleep(2 * time.Millisecond)
 // 	}
 // }
 

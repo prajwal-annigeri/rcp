@@ -112,10 +112,8 @@ func (node *Node) sendHeartbeats() {
 
 			begin3 := time.Now()
 
-			// CHECK
-			log.Printf("CHECKPOINT 2")
 			waitTimer := time.After(5000 * time.Millisecond)
-			var waitAfterCommit <-chan time.Time = make(chan time.Time)
+			// var waitAfterCommit <-chan time.Time = make(chan time.Time)
 			successResponses := 0
 			if selfSuccess {
 				successResponses = 1
@@ -140,28 +138,35 @@ func (node *Node) sendHeartbeats() {
 						prevCommit := node.commitIndex
 						node.commitIndex = node.lastIndex
 						go node.doCallbacks(prevCommit+1, node.commitIndex)
-						// log.Printf("waiter here: %v", time.Since(now))
 						if node.isPersistent {
-							waitAfterCommit = time.After(10 * time.Millisecond)
+							err := node.persistentExecuteTill(node.commitIndex)
+							if err != nil {
+								log.Printf("Error executing: %v", err)
+							}
 						} else {
-							waitAfterCommit = time.After(100 * time.Microsecond)
+							err := node.inMemoryExecuteTill(node.commitIndex)
+							if err != nil {
+								log.Printf("Error executing: %v", err)
+							}
 						}
 
 						if len(logsToSend) > 0 {
-							log.Printf("LOGX (%d) Committed index %d, Setting shorter timer hopefully: %v, abs time: %v", counter, node.commitIndex, time.Since(begin3), time.Now().UnixMilli())
+							log.Printf("LOGX (%d) Committed index %d, finishes in: %v, abs time: %v", counter, node.commitIndex, time.Since(begin3), time.Now().UnixMilli())
 						}
+
+						break successReadingLoop
 					}
 				case <-waitTimer:
-					// log.Printf("Timer out")
+					log.Printf("Timer out")
 					if len(logsToSend) > 0 {
 						log.Printf("LOGX Breaking without quorum: %v Successes: %d", time.Since(begin3), successResponses)
 					}
 					break successReadingLoop
-				case <-waitAfterCommit:
-					if len(logsToSend) > 0 {
-						log.Printf("LOGX Time waiting for extra commits: %v", time.Since(begin3))
-					}
-					break successReadingLoop
+					// case <-waitAfterCommit:
+					// 	if len(logsToSend) > 0 {
+					// 		log.Printf("LOGX Time waiting for extra commits: %v", time.Since(begin3))
+					// 	}
+					// 	break successReadingLoop
 				}
 			}
 

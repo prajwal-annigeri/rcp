@@ -58,7 +58,7 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 		} else {
 			logEntry, err = node.GetInMemoryLog(appendEntryReq.PrevLogIndex)
 		}
-		
+
 		if err == nil {
 			prevLogTerm = logEntry.Term
 		}
@@ -106,7 +106,6 @@ func (node *Node) insertLogs(appendEntryReq *rcppb.AppendEntriesReq) error {
 		return node.insertLogsInMemory(appendEntryReq)
 	}
 
-	
 }
 
 func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.RequestVoteReq) (*rcppb.RequestVoteResponse, error) {
@@ -208,11 +207,9 @@ func (node *Node) Store(ctx context.Context, KV *rcppb.StoreRequest) (*wrappersp
 			case <-waitTimer:
 				log.Printf("TIMED OUT Store")
 				return nil, errors.New("timed out")
-			default:
-				time.Sleep(2 * time.Millisecond)
 			}
 		}
-		
+
 	}
 	return &wrapperspb.BoolValue{Value: true}, nil
 }
@@ -224,12 +221,12 @@ func (node *Node) Get(ctx context.Context, req *rcppb.GetValueReq) (*rcppb.GetVa
 
 	var value string
 	var err error
-	
+
 	if node.isPersistent {
 		value, err = node.db.GetKV(req.Key, req.Bucket)
 		if err != nil {
-		log.Printf("Error getting value for %s: %v\n", req.Key, err)
-		return nil, err
+			log.Printf("Error getting value for %s: %v\n", req.Key, err)
+			return nil, err
 		}
 		return &rcppb.GetValueResponse{Success: true, Value: value}, nil
 	} else {
@@ -243,7 +240,7 @@ func (node *Node) Get(ctx context.Context, req *rcppb.GetValueReq) (*rcppb.GetVa
 		value = val.(string)
 		return &rcppb.GetValueResponse{Success: true, Value: value}, nil
 	}
-	
+
 }
 
 func (node *Node) Delete(ctx context.Context, req *rcppb.DeleteReq) (*wrapperspb.BoolValue, error) {
@@ -380,10 +377,10 @@ func (node *Node) CauseFailure(ctx context.Context, req *rcppb.CauseFailureReque
 	} else {
 		RPCClient, ok := node.ClientMap[nodeToKill]
 		if !ok {
-			return nil, fmt.Errorf("Invalid server or no gRPC client for '%s'", nodeToKill)
+			return nil, fmt.Errorf("invalid server or no gRPC client for '%s'", nodeToKill)
 		}
 		RPCClient.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: false})
 	}
-	
+
 	return &wrapperspb.BoolValue{Value: true}, nil
 }
