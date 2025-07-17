@@ -12,7 +12,7 @@ import (
 )
 
 func (node *Node) resetElectionTimer() {
-	node.electionTimer.Reset(time.Duration(150+rand.Intn(200)) * time.Millisecond)
+	node.electionTimer.Reset(time.Duration(300+rand.Intn(400)) * time.Millisecond)
 }
 
 func (node *Node) monitorElectionTimer() {
