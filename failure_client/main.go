@@ -76,7 +76,14 @@ func changeContactNode() {
 
 func causeFailure(failureType string, waitInSeconds int64, wg *sync.WaitGroup) {
 	defer wg.Done()
-	log.Printf("Scheduling %s failure after %d seconds", failureType, waitInSeconds)
+
+	switch failureType {
+	case "revive":
+		log.Printf("Scheduling revive after %d seconds", waitInSeconds)
+	default:
+		log.Printf("Scheduling %s failure after %d seconds", failureType, waitInSeconds)
+	}
+	
 	time.Sleep(time.Duration(waitInSeconds) * time.Second)
 	for {
 		address, _ := nodeToAddressMap.Load(contactNode)

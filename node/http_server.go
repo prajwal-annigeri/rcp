@@ -34,8 +34,9 @@ type ErrorResponse struct {
 }
 
 type CauseFailureResponse struct {
-	Success    bool   `json:"success"`
-	NodeKilled string `json:"node_killed"`
+	Success     bool   `json:"success"`
+	NodeKilled  string `json:"node_killed"`
+	NodeRevived string `json:"node_revived"`
 }
 
 func (node *Node) startHttpServer() {
@@ -170,6 +171,9 @@ func (node *Node) causeFailureHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Got cause-failure of type %s", failureType)
 	var nodeToKill string
 	switch failureType {
+	case "revive":
+		node.maybeReviveDeadNode(w)
+		return
 	case "leader":
 		currentLeader, ok := node.votedFor.Load(node.currentTerm)
 		if !ok {
@@ -220,6 +224,38 @@ func (node *Node) causeFailureHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		RPCClient.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: false})
 	}
-	
+
 	node.sendJSON(w, CauseFailureResponse{Success: true, NodeKilled: nodeToKill})
+}
+
+func (node *Node) maybeReviveDeadNode(w http.ResponseWriter) {
+	nodeToRevive := ""
+	node.serverStatusMap.Range(func(nodeId any, isAlive any) bool {
+		if !isAlive.(bool) {
+			nodeToRevive = nodeId.(string)
+			return false
+		}
+		return true
+	})
+
+	switch nodeToRevive {
+	case "":
+		node.sendError(w, "No dead nodes", http.StatusBadRequest)
+		return
+	case node.Id:
+		_, err := node.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: true})
+		if err != nil {
+			node.sendError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	default:
+		RPCClient, ok := node.ClientMap[nodeToRevive]
+		if !ok {
+			node.sendError(w, fmt.Sprintf("Invalid server or no gRPC client for '%s'", nodeToRevive), http.StatusInternalServerError)
+			return
+		}
+		RPCClient.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: true})
+	}
+
+	node.sendJSON(w, CauseFailureResponse{Success: true, NodeRevived: nodeToRevive})
 }
