@@ -3,34 +3,16 @@ package node
 import (
 	"context"
 	"log"
+	"math/rand"
 	"rcp/rcppb"
-	"strconv"
 	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-var printTimer bool
-
-func randomElectionTimeout(nodeNum int) time.Duration {
-	x := time.Duration(2000+nodeNum*500) * time.Millisecond
-	// x := time.Duration(250 + rand.Intn(2500)) * time.Millisecond
-	if !printTimer {
-		log.Println(x)
-		printTimer = true
-	}
-	return x
-}
-
 func (node *Node) resetElectionTimer() {
-	nodeNum, err := strconv.Atoi(node.Id[1:])
-	if err != nil {
-		log.Printf("Error setting timer: %v\n", err)
-		return
-	}
-
-	node.electionTimer.Reset(randomElectionTimeout(nodeNum))
+	node.electionTimer.Reset(time.Duration(150+rand.Intn(200)) * time.Millisecond)
 }
 
 func (node *Node) monitorElectionTimer() {
@@ -48,11 +30,12 @@ func (node *Node) monitorElectionTimer() {
 // function to send heartbeats. Will be running as a goroutine in the background.
 func (node *Node) sendHeartbeats() {
 	counter := 0
+	heartbeatCounter := 5
 	for {
 		counter += 1
 		// Send AppendEntry only if live and is leader
 		if node.Live && node.isLeader {
-			channelReadTimer := time.After(2500 * time.Microsecond)
+			channelReadTimer := time.After(10 * time.Millisecond)
 			var logsToSend []*rcppb.LogEntry
 		loop:
 			for i := 1; ; {
@@ -73,6 +56,17 @@ func (node *Node) sendHeartbeats() {
 					break loop
 				}
 			}
+
+			// Send heartbeat only after a few empty AppendEntries
+			if len(logsToSend) == 0 {
+				heartbeatCounter -= 1
+
+				if heartbeatCounter > 0 {
+					continue
+				}
+			}
+
+			heartbeatCounter = 5
 
 			// Call AppendEntries on leader
 			begin1 := time.Now()
@@ -118,6 +112,8 @@ func (node *Node) sendHeartbeats() {
 
 			begin3 := time.Now()
 
+			// CHECK
+			log.Printf("CHECKPOINT 2")
 			waitTimer := time.After(5000 * time.Millisecond)
 			var waitAfterCommit <-chan time.Time = make(chan time.Time)
 			successResponses := 0
