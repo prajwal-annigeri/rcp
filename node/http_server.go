@@ -3,9 +3,11 @@ package node
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"rcp/constants"
 	"time"
 
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -27,8 +29,7 @@ type DeleteResponse struct {
 }
 
 type ErrorResponse struct {
-	Error   string `json:"error"`
-	Success bool   `json:"success"`
+	Error string `json:"error"`
 }
 
 type CauseFailureResponse struct {
@@ -67,19 +68,33 @@ func (node *Node) putHandler(w http.ResponseWriter, r *http.Request) {
 	bucket := r.URL.Query().Get("bucket")
 
 	if key == "" || value == "" {
-		node.sendError(w, "'key' and 'value'required", http.StatusBadRequest)
+		node.sendError(w, "Missing 'key' or 'value'", http.StatusBadRequest)
 		return
 	}
 
-	// TODO: Handle redirect to leader
-	err := node.Store(key, bucket, value)
+	if bucket == "" {
+		bucket = constants.DefaultBucket
+	}
+
+	data, err := node.Store(key, bucket, value)
+
 	if err != nil {
+		if errors.Is(err, ErrNotLeader) {
+			node.sendError(w, data, http.StatusTemporaryRedirect)
+			return
+		}
+
+		if errors.Is(err, ErrTimeOut) {
+			node.sendError(w, "Timeout waiting for consensus", http.StatusGatewayTimeout)
+			return
+		}
+
 		log.Printf("Store failed: %v", err)
 		node.sendError(w, "Store operation failed", http.StatusInternalServerError)
 		return
 	}
 
-	node.sendJSON(w, StoreResponse{Success: true, Message: "Stored successfully"})
+	node.sendJSON(w, StoreResponse{Success: true})
 }
 
 func (node *Node) getHandler(w http.ResponseWriter, r *http.Request) {
@@ -95,9 +110,14 @@ func (node *Node) getHandler(w http.ResponseWriter, r *http.Request) {
 
 	key := r.URL.Query().Get("key")
 	bucket := r.URL.Query().Get("bucket")
+
 	if key == "" {
 		node.sendError(w, "Missing 'key'", http.StatusBadRequest)
 		return
+	}
+
+	if bucket == "" {
+		bucket = constants.DefaultBucket
 	}
 
 	value, err := node.Get(key, bucket)
@@ -129,15 +149,29 @@ func (node *Node) deleteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Handle redirect to leader
-	err := node.Delete(key, bucket)
+	if bucket == "" {
+		bucket = constants.DefaultBucket
+	}
+
+	data, err := node.Delete(key, bucket)
+
 	if err != nil {
+		if errors.Is(err, ErrNotLeader) {
+			node.sendError(w, data, http.StatusTemporaryRedirect)
+			return
+		}
+
+		if errors.Is(err, ErrTimeOut) {
+			node.sendError(w, "Timeout waiting for consensus", http.StatusGatewayTimeout)
+			return
+		}
+
 		log.Printf("Delete failed: %v", err)
 		node.sendError(w, "Delete operation failed", http.StatusInternalServerError)
 		return
 	}
 
-	node.sendJSON(w, DeleteResponse{Success: true, Message: "Deleted successfully"})
+	node.sendJSON(w, DeleteResponse{Success: true})
 }
 
 func (node *Node) sendJSON(w http.ResponseWriter, data interface{}) {
@@ -148,7 +182,7 @@ func (node *Node) sendJSON(w http.ResponseWriter, data interface{}) {
 func (node *Node) sendError(w http.ResponseWriter, message string, statusCode int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(ErrorResponse{Error: message, Success: false})
+	json.NewEncoder(w).Encode(ErrorResponse{Error: message})
 }
 
 func (node *Node) causeFailureHandler(w http.ResponseWriter, r *http.Request) {

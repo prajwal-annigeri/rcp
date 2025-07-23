@@ -161,6 +161,5 @@ func (node *Node) removeFromRecoverySet(nodeId string) {
 func (node *Node) makeCallbackChannel() (string, chan struct{}) {
 	id := uuid.New().String()
 	callbackChannel := make(chan struct{}, 10)
-	// node.callbackChannelMap.Store(id, callbackChannel)
 	return id, callbackChannel
 }

@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"rcp/constants"
 	"rcp/db"
 	"rcp/rcppb"
 	"sync"
@@ -27,6 +26,16 @@ type LogWithCallbackChannel struct {
 
 type Node struct {
 	rcppb.UnimplementedRCPServer
+
+	// Unchanged attributes, don't require mutex
+	Id             string `json:"id"`
+	Port           string `json:"port"`
+	HttpPort       string `json:"http_port"`
+	IP             string `json:"ip"`
+	NodeAddressMap map[string]string
+	ConnMap        map[string]*grpc.ClientConn
+	ClientMap      map[string]rcppb.RCPClient
+
 	currentTerm int64
 
 	// TODO: persist votedFor on disk
@@ -41,13 +50,6 @@ type Node struct {
 	matchIndex                     map[string]int
 	lastIndex                      int64
 	lastTerm                       int64
-	Id                             string `json:"id"`
-	Port                           string `json:"port"`
-	HttpPort                       string `json:"http_port"`
-	IP                             string `json:"ip"`
-	NodeAddressMap                 map[string]string
-	ConnMap                        map[string]*grpc.ClientConn
-	ClientMap                      map[string]rcppb.RCPClient
 	Live                           bool
 	DBCloseFunc                    func() error
 	K                              int
@@ -80,9 +82,9 @@ type Node struct {
 	recoverySetLock       sync.Mutex
 
 	// reachable nodes set to simulate partitions
-	reachableNodes            map[string]struct{}
-	reachableSetLock          sync.RWMutex
-	callbackChannelMap        sync.Map
+	reachableNodes   map[string]struct{}
+	reachableSetLock sync.RWMutex
+
 	indexToCallbackChannelMap sync.Map
 
 	failedAppendEntries sync.Map
@@ -264,123 +266,88 @@ func (node *Node) Start() {
 	}
 }
 
-func (node *Node) Store(key string, bucket string, value string) error {
-	if key == "" {
-		return ErrKeyRequired
-	}
-
-	if value == "" {
-		return ErrValueRequired
-	}
-
-	if bucket == "" {
-		bucket = constants.DefaultBucket
-	}
-
+func (node *Node) Store(key string, bucket string, value string) (string, error) {
 	log.Printf("Received data: Key=%s, Value=%s, Bucket=%s", key, value, bucket)
 
 	if !node.isLeader {
-		return ErrNotLeader
-		// leader, ok := node.votedFor.Load(node.currentTerm)
-		// if !ok {
-		// 	log.Println("BUG: NO LEADER")
-		// 	return nil, errors.New("no leader")
-		// }
-		// grpcClient, ok := node.ClientMap[leader.(string)]
-		// if ok {
-		// 	log.Printf("Forwarded req with key: %s, bucket: %s to leader: %s\n", KV.Key, KV.Bucket, leader.(string))
-		// 	return grpcClient.Store(context.Background(), &rcppb.StoreRequest{Key: KV.Key, Value: KV.Value, Bucket: KV.Bucket})
-		// }
+		// Since no mutex lock used here, current leader can be wrong but mistake only cost another retry
+		leader, ok := node.votedFor.Load(node.currentTerm)
+		if !ok {
+			log.Println("BUG: NO LEADER")
+			return "", ErrMissingLeader
+		}
+		return leader.(string), ErrNotLeader
 	} else {
-		callbackChannelId, callbackChannel := node.makeCallbackChannel()
-		defer node.callbackChannelMap.Delete(callbackChannelId)
+		callbackCh := make(chan struct{})
 		begin := time.Now()
+
 		go func() {
 			node.logBufferChan <- LogWithCallbackChannel{
 				LogEntry: &rcppb.LogEntry{
-					LogType:           "store",
-					Key:               key,
-					Value:             value,
-					CallbackChannelId: callbackChannelId,
-					Bucket:            bucket,
+					LogType: "store",
+					Key:     key,
+					Value:   value,
+					Bucket:  bucket,
 				},
-				CallbackChannel: callbackChannel,
+				CallbackChannel: callbackCh,
 			}
 		}()
-		// log.Printf("LOGX Time after putting log in channel: %v, abs: %v", time.Since(begin), time.Now().UnixMilli())
-		waitTimer := time.After(1 * time.Second)
-		for {
-			select {
-			case <-callbackChannel:
-				log.Printf("Time to get callback after put: %v, absolute: %v", time.Since(begin), time.Now().UnixMilli())
-				return nil
-			case <-waitTimer:
-				log.Printf("TIMED OUT Store")
-				return ErrTimeOut
-			}
+
+		select {
+		case <-callbackCh:
+			log.Printf("Time to get callback after put: %v, absolute: %v", time.Since(begin), time.Now().UnixMilli())
+			return "", nil
+		case <-time.After(1 * time.Second):
+			log.Printf("TIMED OUT Store key: %s, bucket: %s, value: %s", key, bucket, value)
+			return "", ErrTimeOut
 		}
 	}
 }
 
 func (node *Node) Get(key string, bucket string) (string, error) {
-	if bucket == "" {
-		bucket = constants.DefaultBucket
-	}
-
+	// No lock used here for performance and cost of mistake is very low since
+	// the get operation run first, if changes were supposed to happen, the data
+	// would be the same as if lock is used
 	value, err := node.db.Get(key, bucket)
 	if err != nil {
 		return "", err
 	}
-
 	return value, nil
 }
 
-func (node *Node) Delete(key string, bucket string) error {
-	if key == "" {
-		return ErrKeyRequired
-	}
-
-	if bucket == "" {
-		bucket = constants.DefaultBucket
-	}
-
+func (node *Node) Delete(key string, bucket string) (string, error) {
 	log.Printf("Received delete: Key=%s, Bucket=%s", key, bucket)
 
 	if !node.isLeader {
-		return ErrNotLeader
-		// leader, ok := node.votedFor.Load(node.currentTerm)
-		// if !ok {
-		// 	log.Println("BUG: NO LEADER")
-		// 	return nil, errors.New("no leader")
-		// }
-		// grpcClient, ok := node.ClientMap[leader.(string)]
-		// if ok {
-		// 	log.Printf("Forwarded delete req with key: %s, bucket: %s to leader: %s\n", req.Key, req.Bucket, leader.(string))
-		// 	return grpcClient.Delete(context.Background(), &rcppb.DeleteReq{Key: req.Key, Bucket: req.Bucket})
-		// }
+		// Since no mutex lock used here, current leader can be wrong but mistake only cost another retry
+		leader, ok := node.votedFor.Load(node.currentTerm)
+		if !ok {
+			log.Println("BUG: NO LEADER")
+			return "", ErrMissingLeader
+		}
+		return leader.(string), ErrNotLeader
 	} else {
-		callbackChannelId, callbackChannel := node.makeCallbackChannel()
-		defer node.callbackChannelMap.Delete(callbackChannelId)
+		callbackCh := make(chan struct{})
 		begin := time.Now()
+
 		go func() {
 			node.logBufferChan <- LogWithCallbackChannel{
 				LogEntry: &rcppb.LogEntry{
-					LogType:           "delete",
-					Key:               key,
-					CallbackChannelId: callbackChannelId,
-					Bucket:            bucket,
+					LogType: "delete",
+					Key:     key,
+					Bucket:  bucket,
 				},
-				CallbackChannel: callbackChannel,
+				CallbackChannel: callbackCh,
 			}
 		}()
 
 		select {
-		case <-callbackChannel:
+		case <-callbackCh:
 			log.Printf("Time to get callback after delete: %v", time.Since(begin))
-			return nil
+			return "", nil
 		case <-time.After(1 * time.Second):
 			log.Printf("TIMED OUT Delete key: %s, bucket: %s", key, bucket)
-			return ErrTimeOut
+			return "", ErrTimeOut
 		}
 	}
 }
