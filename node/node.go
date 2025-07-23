@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"rcp/constants"
 	"rcp/db"
 	"rcp/rcppb"
 	"sync"
@@ -266,6 +267,144 @@ func (node *Node) Start() {
 			node.printState()
 		default:
 			fmt.Println("Invalid option. Please choose again.")
+		}
+	}
+}
+
+func (node *Node) Store(key string, bucket string, value string) error {
+	if key == "" {
+		return ErrKeyRequired
+	}
+
+	if value == "" {
+		return ErrValueRequired
+	}
+
+	if bucket == "" {
+		bucket = constants.DefaultBucket
+	}
+
+	log.Printf("Received data: Key=%s, Value=%s, Bucket=%s", key, value, bucket)
+
+	if !node.isLeader {
+		return ErrNotLeader
+		// leader, ok := node.votedFor.Load(node.currentTerm)
+		// if !ok {
+		// 	log.Println("BUG: NO LEADER")
+		// 	return nil, errors.New("no leader")
+		// }
+		// grpcClient, ok := node.ClientMap[leader.(string)]
+		// if ok {
+		// 	log.Printf("Forwarded req with key: %s, bucket: %s to leader: %s\n", KV.Key, KV.Bucket, leader.(string))
+		// 	return grpcClient.Store(context.Background(), &rcppb.StoreRequest{Key: KV.Key, Value: KV.Value, Bucket: KV.Bucket})
+		// }
+	} else {
+		callbackChannelId, callbackChannel := node.makeCallbackChannel()
+		defer node.callbackChannelMap.Delete(callbackChannelId)
+		begin := time.Now()
+		go func() {
+			node.logBufferChan <- LogWithCallbackChannel{
+				LogEntry: &rcppb.LogEntry{
+					LogType:           "store",
+					Key:               key,
+					Value:             value,
+					CallbackChannelId: callbackChannelId,
+					Bucket:            bucket,
+				},
+				CallbackChannel: callbackChannel,
+			}
+		}()
+		// log.Printf("LOGX Time after putting log in channel: %v, abs: %v", time.Since(begin), time.Now().UnixMilli())
+		waitTimer := time.After(1 * time.Second)
+		for {
+			select {
+			case <-callbackChannel:
+				log.Printf("Time to get callback after put: %v, absolute: %v", time.Since(begin), time.Now().UnixMilli())
+				return nil
+			case <-waitTimer:
+				log.Printf("TIMED OUT Store")
+				return ErrTimeOut
+			}
+		}
+	}
+}
+
+func (node *Node) Get(key string, bucket string) (string, error) {
+	if bucket == "" {
+		bucket = constants.DefaultBucket
+	}
+
+	var value string
+	var err error
+
+	if node.isPersistent {
+		value, err = node.db.GetKV(key, bucket)
+		if err != nil {
+			log.Printf("Error getting value for %s: %v\n", key, err)
+		}
+	} else {
+		err = nil
+		val, ok := node.inMemoryKV.Load(fmt.Sprintf("%s/%s", bucket, key))
+		if !ok {
+			err = fmt.Errorf("no value for key: %s in bucket %s", key, bucket)
+		} else {
+			value = val.(string)
+		}
+	}
+
+	if err != nil {
+		return "", err
+	}
+
+	return value, nil
+}
+
+func (node *Node) Delete(key string, bucket string) error {
+	if key == "" {
+		return ErrKeyRequired
+	}
+
+	if bucket == "" {
+		bucket = constants.DefaultBucket
+	}
+
+	log.Printf("Received delete: Key=%s, Bucket=%s", key, bucket)
+
+	if !node.isLeader {
+		return ErrNotLeader
+		// leader, ok := node.votedFor.Load(node.currentTerm)
+		// if !ok {
+		// 	log.Println("BUG: NO LEADER")
+		// 	return nil, errors.New("no leader")
+		// }
+		// grpcClient, ok := node.ClientMap[leader.(string)]
+		// if ok {
+		// 	log.Printf("Forwarded delete req with key: %s, bucket: %s to leader: %s\n", req.Key, req.Bucket, leader.(string))
+		// 	return grpcClient.Delete(context.Background(), &rcppb.DeleteReq{Key: req.Key, Bucket: req.Bucket})
+		// }
+	} else {
+		callbackChannelId, callbackChannel := node.makeCallbackChannel()
+		defer node.callbackChannelMap.Delete(callbackChannelId)
+		begin := time.Now()
+		go func() {
+			node.logBufferChan <- LogWithCallbackChannel{
+				LogEntry: &rcppb.LogEntry{
+					LogType:           "delete",
+					Key:               key,
+					CallbackChannelId: callbackChannelId,
+					Bucket:            bucket,
+				},
+				CallbackChannel: callbackChannel,
+			}
+		}()
+
+		select {
+		case <-callbackChannel:
+			log.Printf("Time to get callback after delete: %v", time.Since(begin))
+			return nil
+		case <-time.After(1 * time.Second):
+			log.Printf("TIMED OUT Delete key: %s, bucket: %s", key, bucket)
+			return ErrTimeOut
 		}
 	}
 }
