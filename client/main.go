@@ -2,33 +2,38 @@ package main
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
-	"rcp/rcppb"
-	"strconv"
 	"strings"
 	"time"
-
-	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-// Node represents a server with its ID, ports
 type Node struct {
 	ID       string `json:"id"`
-	Port     string `json:"port"`
-	HTTPPort string `json:"http_port"`
+	HttpPort string `json:"http_port"`
+	IP       string `json:"ip"`
 }
 
-// Config represents the JSON structure
 type Config struct {
 	K     int    `json:"K"`
 	Nodes []Node `json:"nodes"`
 }
 
-// LoadConfig reads and parses the JSON file
+type RCPClient struct {
+	httpClient  http.Client
+	serverAddrs map[string]string
+}
+
+type GetValueResponse struct {
+	Found bool   `json:"found"`
+	Value string `json:"value"`
+}
+
 func LoadConfig(filename string) (*Config, error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {
@@ -44,57 +49,70 @@ func LoadConfig(filename string) (*Config, error) {
 	return &config, nil
 }
 
-// displayMenu shows the user menu
-func displayMenu() {
-	fmt.Println("\nMenu:")
-	fmt.Println("0. Do operations from file")
-	fmt.Println("1. Send Store Request")
-	fmt.Println("2. Get Value")
-	fmt.Println("3. Delete Key")
-	fmt.Println("4. Revive server")
-	fmt.Println("5. Partition")
-	fmt.Println("6. Set Delay")
-	fmt.Println("7. Kill Server (Specific sever)")
-	fmt.Println("8. Kill Server (Leader/Non-Leader)")
-	// fmt.Println("7. Get Balance")
-	// fmt.Println("8. Deposit Checking")
-	// fmt.Println("9. Write Check")
-	fmt.Println("10. Performance")
-	fmt.Println("-1. Exit")
-}
-
-// MapServerIDToHTTPPort creates a mapping of server IDs to HTTP ports
-func MapServerIDToHTTPPort(config *Config) map[string]string {
-	serverMap := make(map[string]string)
-	for _, node := range config.Nodes {
-		serverMap[node.ID] = node.HTTPPort
+func main() {
+	config, err := LoadConfig("../nodes.json")
+	if err != nil {
+		log.Fatal("Error loading config: ", err)
 	}
-	return serverMap
+
+	rcp := &RCPClient{}
+	rcp.serverAddrs = make(map[string]string)
+
+	for _, node := range config.Nodes {
+		addr := "http://" + node.IP + node.HttpPort
+		rcp.serverAddrs[node.ID] = addr
+	}
+
+	client := http.Client{
+		Timeout: 10 * time.Second,
+	}
+	rcp.httpClient = client
+
+	for {
+		fmt.Println("\nMenu:")
+		fmt.Println("1. Set value")
+		fmt.Println("2. Get value")
+		fmt.Println("3. Delete key")
+		fmt.Println("4. Cause failure")
+		fmt.Println("0. Exit")
+		fmt.Print("Enter choice: ")
+		var choice int
+		fmt.Scan(&choice)
+
+		switch choice {
+		case 1:
+			rcp.setValue()
+		case 2:
+			rcp.getValue()
+		case 3:
+			rcp.deleteKey()
+		case 4:
+			rcp.causeFailure()
+		case 0:
+			fmt.Println("Exiting...")
+			return
+
+		default:
+			fmt.Println("Invalid choice, try again.")
+		}
+	}
 }
 
-// sendStoreRequest prompts for server ID, key, and value, then makes an HTTP request
-func sendStoreRequest(grpcClientMap map[string]rcppb.RCPClient) {
+func (c *RCPClient) setValue() {
 	reader := bufio.NewReader(os.Stdin)
 
 	// Ask for Server ID
 	fmt.Print("Enter Node ID (e.g., S1, S2, S3): ")
-	nodeID, _ := reader.ReadString('\n')
-	nodeID = strings.TrimSpace(nodeID)
+	serverID, _ := reader.ReadString('\n')
+	serverID = strings.TrimSpace(serverID)
 
 	// Get HTTP port for the server
-	// httpPort, exists := serverMap[serverID]
-	// if !exists {
-	// 	fmt.Println("Invalid Server ID!")
-	// 	return
-	// }
-
-	grpcClient, ok := grpcClientMap[nodeID]
-	if !ok {
-		log.Printf("No gRPC client for node %s", nodeID)
+	addr, exists := c.serverAddrs[serverID]
+	if !exists {
+		fmt.Println("Invalid Server ID!")
 		return
 	}
 
-	// Ask for Key and Value
 	fmt.Print("Enter Key: ")
 	key, _ := reader.ReadString('\n')
 	key = strings.TrimSpace(key)
@@ -109,100 +127,78 @@ func sendStoreRequest(grpcClientMap map[string]rcppb.RCPClient) {
 
 	begin := time.Now()
 
-	resp, err := grpcClient.Store(context.Background(), &rcppb.StoreRequest{Key: key, Value: value, Bucket: bucket})
+	params := url.Values{}
+	params.Add("key", key)
+	params.Add("value", value)
+	params.Add("bucket", bucket)
+
+	reqURL := fmt.Sprintf("%s/put", addr) + "?" + params.Encode()
+
+	req, err := http.NewRequest(http.MethodPost, reqURL, nil)
+	if err != nil {
+		fmt.Println("Error creating request:", err)
+		return
+	}
+
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		fmt.Println("Error sending request:", err)
 		return
 	}
+	defer resp.Body.Close()
 
-	log.Printf("TIME: %v", time.Since(begin))
+	log.Printf("Time: %v", time.Since(begin))
 
-	fmt.Println("Store request sent! Result:", resp.Value)
+	fmt.Println("Store request sent!")
 }
 
-func sendDeleteRequest(grpcClientMap map[string]rcppb.RCPClient) {
+func (c *RCPClient) deleteKey() {
 	reader := bufio.NewReader(os.Stdin)
 
 	// Ask for Server ID
 	fmt.Print("Enter Node ID (e.g., S1, S2, S3): ")
-	nodeID, _ := reader.ReadString('\n')
-	nodeID = strings.TrimSpace(nodeID)
+	serverID, _ := reader.ReadString('\n')
+	serverID = strings.TrimSpace(serverID)
 
 	// Get HTTP port for the server
-	// httpPort, exists := serverMap[serverID]
-	// if !exists {
-	// 	fmt.Println("Invalid Server ID!")
-	// 	return
-	// }
-
-	grpcClient, ok := grpcClientMap[nodeID]
-	if !ok {
-		log.Printf("No gRPC client for node %s", nodeID)
+	addr, exists := c.serverAddrs[serverID]
+	if !exists {
+		fmt.Println("Invalid Server ID!")
 		return
 	}
 
-	// Ask for Key and Value
 	fmt.Print("Enter Key: ")
 	key, _ := reader.ReadString('\n')
 	key = strings.TrimSpace(key)
 
-	fmt.Print("Enter Bucket: ")
-	bucket, _ := reader.ReadString('\n')
-	bucket = strings.TrimSpace(bucket)
-
 	begin := time.Now()
 
-	resp, err := grpcClient.Delete(context.Background(), &rcppb.DeleteReq{Key: key, Bucket: bucket})
+	params := url.Values{}
+	params.Add("key", key)
+
+	reqURL := fmt.Sprintf("%s/del", addr) + "?" + params.Encode()
+	fmt.Println(reqURL)
+
+	req, err := http.NewRequest(http.MethodDelete, reqURL, nil)
+	if err != nil {
+		fmt.Println("Error creating request:", err)
+		return
+	}
+
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		fmt.Println("Error sending request:", err)
 		return
 	}
+	defer resp.Body.Close()
 
-	log.Printf("TIME: %v", time.Since(begin))
+	log.Printf("Time: %v", time.Since(begin))
 
-	fmt.Println("Delete request sent! Result:", resp.Value)
-}
-
-func doPartition(grpcClientMap map[string]rcppb.RCPClient) {
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Println("Enter partitions. Example: [[\"S1\", \"S2\"], [\"S3\", \"S4\"]]")
-	
-	input, err := reader.ReadString('\n')
-    if err != nil {
-        log.Printf("Error reading input: %v", err)
-        return
-    }
-	input = strings.TrimSpace(input)
-    input = strings.ReplaceAll(input, ", ", ",")
-	var partitions [][]string
-	err = json.Unmarshal([]byte(input), &partitions)
-	if err != nil {
-		log.Printf("Error parsing partitions: %v", err)
-		return
-	}
-
-	for _, partitionList := range partitions {
-		for _, nodeId := range partitionList {
-			grpcClient, ok := grpcClientMap[nodeId]
-			if !ok {
-				log.Printf("Node %s does not exist", nodeId)
-				continue
-			}
-			_, err := grpcClient.Partition(context.Background(), &rcppb.PartitionReq{ReachableNodes: partitionList})
-			if err != nil {
-				log.Printf("Error setting reachable nodes on %s: %v", nodeId, err)
-			}
-		}
-		
-	}
-}
-
-type GetValueResponse struct {
-	Value string `json:"value"`
+	fmt.Println("Delete request sent!")
 }
 
 // getValue makes Get request to query KV store
-func getValue(grpcClientMap map[string]rcppb.RCPClient) {
+func (c *RCPClient) getValue() {
 	reader := bufio.NewReader(os.Stdin)
 
 	// Ask for Server ID
@@ -210,199 +206,125 @@ func getValue(grpcClientMap map[string]rcppb.RCPClient) {
 	serverID, _ := reader.ReadString('\n')
 	serverID = strings.TrimSpace(serverID)
 
-	// Ask for Key
 	fmt.Print("Enter Key: ")
 	key, _ := reader.ReadString('\n')
 	key = strings.TrimSpace(key)
 
-	// Ask for Bucket
 	fmt.Print("Enter Bucket: ")
 	bucket, _ := reader.ReadString('\n')
 	bucket = strings.TrimSpace(bucket)
 
+	params := url.Values{}
+	params.Add("key", key)
+	params.Add("bucket", bucket)
+
 	if serverID == "all" {
-		GetValuesFromAll(grpcClientMap, key, bucket)
+		for k, v := range c.serverAddrs {
+			reqURL := fmt.Sprintf("%s/get", v) + "?" + params.Encode()
+
+			req, err := http.NewRequest(http.MethodGet, reqURL, nil)
+			if err != nil {
+				fmt.Println("Error creating request:", err)
+				continue
+			}
+
+			resp, err := c.httpClient.Do(req)
+			if err != nil {
+				fmt.Println("Error sending request:", err)
+				continue
+			}
+			defer resp.Body.Close()
+
+			var getValResp GetValueResponse
+			if err := json.NewDecoder(resp.Body).Decode(&getValResp); err != nil {
+				fmt.Println("Error decode json response:", err)
+				continue
+			}
+
+			if !getValResp.Found {
+				fmt.Println("Error key not found")
+				continue
+			}
+
+			fmt.Printf("Value on %s: %s\n", k, getValResp.Value)
+		}
+
 	} else {
-		grpcClient, ok := grpcClientMap[serverID]
-		if !ok {
-			fmt.Printf("Node %s does not exist", serverID)
+		// Get HTTP port for the server
+		addr, exists := c.serverAddrs[serverID]
+		if !exists {
+			fmt.Println("Invalid Server ID!")
 			return
 		}
-		
-		value, err := GetValueFrom(grpcClient, key, bucket)
+
+		reqURL := fmt.Sprintf("%s/get", addr) + "?" + params.Encode()
+
+		req, err := http.NewRequest(http.MethodGet, reqURL, nil)
 		if err != nil {
-			fmt.Printf("Error getting value from server %s: %v\n", serverID, err)
+			fmt.Println("Error creating request:", err)
 			return
 		}
-		fmt.Printf("Value on %s: %s\n", serverID, value)
-	}
 
-}
-
-func GetValueFrom(grpcClient rcppb.RCPClient, key string, bucket string) (string, error) {
-	val, err := grpcClient.Get(context.Background(), &rcppb.GetValueReq{Key: key, Bucket: bucket})
-	if err != nil {
-		return "", err
-	}
-	
-	return val.Value, nil
-}
-
-// GetValuesFromAll queries all servers for a key
-func GetValuesFromAll(grpcClientMap map[string]rcppb.RCPClient, key string, bucket string) {
-	for serverID, grpcClient := range grpcClientMap {
-		value, err := GetValueFrom(grpcClient, key, bucket)
+		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			fmt.Printf("Error querying server %s: %v\n", serverID, err)
-		} else {
-			fmt.Printf("%s: %s\n", serverID, value)
+			fmt.Println("Error sending request:", err)
+			return
 		}
+		defer resp.Body.Close()
+
+		var getValResp GetValueResponse
+		if err := json.NewDecoder(resp.Body).Decode(&getValResp); err != nil {
+			fmt.Println("Error decode json response:", err)
+			return
+		}
+
+		if !getValResp.Found {
+			fmt.Println("Error key not found")
+			return
+		}
+
+		fmt.Printf("Value on %s: %s\n", serverID, getValResp.Value)
 	}
+
 }
 
-func killServer(grpcClientMap map[string]rcppb.RCPClient) {
+func (c *RCPClient) causeFailure() {
 	reader := bufio.NewReader(os.Stdin)
 
 	// Ask for Server ID
-	fmt.Print("Enter Server IDs separated by spaces (e.g., S1 S2 S3): ")
-	serverIDs, _ := reader.ReadString('\n')
-	serverIDs = strings.TrimSpace(serverIDs)
-	serverIdSlice := strings.Fields(serverIDs)
-	for _, serverID := range serverIdSlice {
-		grpcClient, exists := grpcClientMap[serverID]
-		if !exists {
-			fmt.Printf("Invalid Server ID: %s!", serverID)
-			continue
-		}
+	fmt.Print("Enter contact server ID (e.g., S1, S2, S3): ")
+	serverID, _ := reader.ReadString('\n')
+	serverID = strings.TrimSpace(serverID)
 
-		_, err := grpcClient.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: false})
-		if err != nil {
-			log.Printf("Error killing server %s: %v", serverID, err)
-		}
-	}
-}
-
-func reviveServer(grpcClientMap map[string]rcppb.RCPClient) {
-	reader := bufio.NewReader(os.Stdin)
-
-	// Ask for Server ID
-	fmt.Print("Enter Server IDs separated by spaces (e.g., S1 S2 S3): ")
-	serverIDs, _ := reader.ReadString('\n')
-	serverIDs = strings.TrimSpace(serverIDs)
-	serverIdSlice := strings.Fields(serverIDs)
-	for _, serverID := range serverIdSlice {
-		grpcClient, exists := grpcClientMap[serverID]
-		if !exists {
-			fmt.Printf("Invalid Server ID: %s!", serverID)
-			continue
-		}
-
-		_, err := grpcClient.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: true})
-		if err != nil {
-			log.Printf("Error killing server %s: %v", serverID, err)
-		}
-	}
-}
-
-func sendDelayRequest(grpcClientMap map[string]rcppb.RCPClient) {
-	reader := bufio.NewReader(os.Stdin)
-
-	// Ask for From, To and Delay
-	fmt.Print("Enter From: ")
-	from, _ := reader.ReadString('\n')
-	from = strings.TrimSpace(from)
-
-	grpcClient, exists := grpcClientMap[from]
+	// Get HTTP port for the server
+	addr, exists := c.serverAddrs[serverID]
 	if !exists {
 		fmt.Println("Invalid Server ID!")
 		return
 	}
 
-	fmt.Print("Enter To: ")
-	to, _ := reader.ReadString('\n')
-	to = strings.TrimSpace(to)
+	// Ask for Key and Value
+	fmt.Print("Enter failure type (leader/non-leader/random/revive): ")
+	failureType, _ := reader.ReadString('\n')
+	failureType = strings.TrimSpace(failureType)
 
-	fmt.Print("Enter Delay (in milliseconds): ")
-	delayStr, _ := reader.ReadString('\n')
-	delayStr = strings.TrimSpace(delayStr)
-
-	delay, err := strconv.ParseInt(delayStr, 10, 64)
+	resp, err := http.Get(fmt.Sprintf("%s/cause-failure?type=%s", addr, failureType))
 	if err != nil {
-		fmt.Println("Invalid Delay value. Must be an integer.")
+		log.Printf("Error causing failure: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Failed to read response body: %s", err)
 		return
 	}
 
-	// Construct the HTTP request
-	resp, err := grpcClient.Delay(context.Background(), &rcppb.DelayRequest{NodeId: to, Delay: delay})
-	if err != nil {
-		log.Printf("Error setting delay: %v", err)
+	if resp.StatusCode == http.StatusOK {
+		log.Printf("Cause failure response: %v", string(body))
 		return
-	}
-
-	fmt.Println("Delay request sent! Response: ", resp.Value)
-}
-
-func causeFailureBasedOnRole(grpcClientMap map[string]rcppb.RCPClient) {
-	fmt.Println("Select type of failure to cause:")
-	fmt.Println("1. Leader")
-	fmt.Println("2. Non-leader")
-	fmt.Println("3. Random")
-	var choice int
-	fmt.Scan(&choice)
-	var failureType string
-	switch choice {
-	case 1:
-		failureType = "leader"
-	case 2:
-		failureType = "non-leader"
-	case 3:
-		failureType = "random"
-	}
-	grpcClient := grpcClientMap["S1"]
-	grpcClient.CauseFailure(context.Background(), &rcppb.CauseFailureRequest{Type: failureType})
-}
-
-func main() {
-	config, err := LoadConfig("../nodes.json")
-	if err != nil {
-		log.Fatal("Error loading config: ", err)
-	}
-
-	// serverMap := MapServerIDToHTTPPort(config)
-	grpcClientMap, err := establishConns(config)
-	if err != nil {
-		log.Fatal("Failed to establish connections to nodes: ", err)
-	}
-	
-	for {
-		displayMenu()
-		fmt.Print("Enter choice: ")
-		var choice int
-		fmt.Scan(&choice)
-
-		switch choice {
-		case 1:
-			sendStoreRequest(grpcClientMap)
-		case 2:
-			getValue(grpcClientMap)
-		case 3:
-			sendDeleteRequest(grpcClientMap)
-		case 4:
-			reviveServer(grpcClientMap)
-		case 5:
-			doPartition(grpcClientMap)
-		case 6:
-			sendDelayRequest(grpcClientMap)
-		case 7:
-			killServer(grpcClientMap)
-		case 8:
-			causeFailureBasedOnRole(grpcClientMap)
-		case -1:
-			fmt.Println("Exiting...")
-			return
-
-		default:
-			fmt.Println("Invalid choice, try again.")
-		}
+	} else {
+		log.Printf("Unexpected error", resp.StatusCode)
+		return
 	}
 }
