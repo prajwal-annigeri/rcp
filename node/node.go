@@ -31,7 +31,7 @@ type Node struct {
 
 	// TODO: persist votedFor on disk
 	votedFor    sync.Map
-	db          *db.Database
+	db          db.Database
 	commitIndex int64
 
 	// Index upto where logs have been executed (inclusive)
@@ -88,10 +88,6 @@ type Node struct {
 	failedAppendEntries sync.Map
 	// replicatedCount     sync.Map
 	delays sync.Map
-
-	isPersistent bool
-	inMemoryLogs sync.Map
-	inMemoryKV   sync.Map
 
 	// Number of nodes with which initial connection has been established
 	initialConnectionEstablished atomic.Int64
@@ -162,18 +158,19 @@ func NewNode(thisNodeId, protocol string, persistent bool, configString, configF
 		recoveryLogWaitingSet: make(map[string]struct{}),
 		reachableNodes:        make(map[string]struct{}),
 		beginTime:             time.Now(),
-		isPersistent:          persistent,
 	}
 
-	if newNode.isPersistent {
+	if persistent {
 		// Initialize data store
 		dbPath := "./dbs/" + thisNodeId + ".db"
-		db, dbCloseFunc, err := db.InitDatabase(dbPath)
+		db, dbCloseFunc, err := db.InitBoltDatabase(dbPath)
 		if err != nil {
 			log.Fatalf("InitDatabase(%q): %v", dbPath, err)
 		}
 		newNode.db = db
 		newNode.DBCloseFunc = dbCloseFunc
+	} else {
+		newNode.db = db.InitMemoryDatabase()
 	}
 
 	switch protocol {
@@ -252,11 +249,7 @@ func (node *Node) Start() {
 
 		switch input {
 		case "2":
-			if node.isPersistent {
-				node.db.PrintAllLogs()
-			} else {
-				node.PrintAllInMemoryLogs()
-			}
+			node.db.PrintAllLogs()
 
 		// case "3":
 		// 	err := node.db.PrintAllLogsUnordered()
@@ -334,24 +327,7 @@ func (node *Node) Get(key string, bucket string) (string, error) {
 		bucket = constants.DefaultBucket
 	}
 
-	var value string
-	var err error
-
-	if node.isPersistent {
-		value, err = node.db.GetKV(key, bucket)
-		if err != nil {
-			log.Printf("Error getting value for %s: %v\n", key, err)
-		}
-	} else {
-		err = nil
-		val, ok := node.inMemoryKV.Load(fmt.Sprintf("%s/%s", bucket, key))
-		if !ok {
-			err = fmt.Errorf("no value for key: %s in bucket %s", key, bucket)
-		} else {
-			value = val.(string)
-		}
-	}
-
+	value, err := node.db.Get(key, bucket)
 	if err != nil {
 		return "", err
 	}

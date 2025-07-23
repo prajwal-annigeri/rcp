@@ -49,14 +49,7 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 
 	if appendEntryReq.PrevLogIndex >= 0 {
 		prevLogTerm := int64(-1)
-		var logEntry *rcppb.LogEntry
-		var err error
-		err = nil
-		if node.isPersistent {
-			logEntry, err = node.db.GetLogAtIndex(appendEntryReq.PrevLogIndex)
-		} else {
-			logEntry, err = node.GetInMemoryLog(appendEntryReq.PrevLogIndex)
-		}
+		logEntry, err := node.db.GetLogAtIndex(appendEntryReq.PrevLogIndex)
 
 		if err == nil {
 			prevLogTerm = logEntry.Term
@@ -99,12 +92,40 @@ func (node *Node) insertLogs(appendEntryReq *rcppb.AppendEntriesReq) error {
 		return nil
 	}
 
-	if node.isPersistent {
-		return node.insertLogsPersistent(appendEntryReq)
-	} else {
-		return node.insertLogsInMemory(appendEntryReq)
+	currIndex := appendEntryReq.PrevLogIndex + 1
+	lastEntryTerm := appendEntryReq.Term
+
+	for _, entry := range appendEntryReq.Entries {
+		// Lookup existing log at index
+
+		if _, ok := node.possibleFailureOrRecoveryIndex.Load(currIndex); ok {
+			existingEntry, err := node.db.GetLogAtIndex(currIndex)
+			if err == nil {
+				if existingEntry.LogType == "failure" {
+					node.removeFromFailureSet(existingEntry.NodeId)
+				} else if existingEntry.LogType == "recovery" {
+					node.removeFromRecoverySet(existingEntry.NodeId)
+				}
+			}
+		}
+
+		// Put new entry
+		if entry.LogType == "failure" || entry.LogType == "success" {
+			go node.possibleFailureOrRecoveryIndex.Store(currIndex, "")
+		}
+
+		err := node.db.PutLogAtIndex(currIndex, entry)
+		if err != nil {
+			log.Printf("Error putting log at index %d: %v", currIndex, err)
+		}
+
+		node.lastIndex = currIndex
+		lastEntryTerm = entry.Term
+		currIndex++
 	}
 
+	node.lastTerm = lastEntryTerm
+	return nil
 }
 
 func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.RequestVoteReq) (*rcppb.RequestVoteResponse, error) {

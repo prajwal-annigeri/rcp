@@ -138,16 +138,9 @@ func (node *Node) sendHeartbeats() {
 						prevCommit := node.commitIndex
 						node.commitIndex = node.lastIndex
 						go node.doCallbacks(prevCommit+1, node.commitIndex)
-						if node.isPersistent {
-							err := node.persistentExecuteTill(node.commitIndex)
-							if err != nil {
-								log.Printf("Error executing: %v", err)
-							}
-						} else {
-							err := node.inMemoryExecuteTill(node.commitIndex)
-							if err != nil {
-								log.Printf("Error executing: %v", err)
-							}
+						err := node.executeUntil(node.commitIndex)
+						if err != nil {
+							log.Printf("Error executing: %v", err)
 						}
 
 						if len(logsToSend) > 0 {
@@ -179,37 +172,20 @@ func (node *Node) constructAppendEntriesRequest(term int64, nodeId string) (*rcp
 	nextIndex, _ := node.nextIndex.Load(nodeId)
 	var entries []*rcppb.LogEntry
 	var err error
-	if node.isPersistent {
-		entries, err = node.db.GetLogsFromIndex(nextIndex.(int64))
-		if err != nil {
-			log.Printf("Error getting logs to construct append entries: %v", err)
-			return nil, -1, err
-		}
-	} else {
-		entries, err = node.GetInMemoryLogsFromIndex(nextIndex.(int64))
-		if err != nil {
-			log.Printf("Error getting logs to construct append entries: %v", err)
-			return nil, -1, err
-		}
+	entries, err = node.db.GetLogsFromIndex(nextIndex.(int64))
+	if err != nil {
+		log.Printf("Error getting logs to construct append entries: %v", err)
+		return nil, -1, err
 	}
 
 	prevLogTerm := int64(-1)
 	if nextIndex.(int64)-1 >= 0 {
-		if node.isPersistent {
-			prevLogEntry, err := node.db.GetLogAtIndex(nextIndex.(int64) - 1)
-			if err != nil {
-				log.Printf("error fetching prevLogEntry %d for %s: %v", nextIndex.(int64)-1, nodeId, err)
-				return nil, -1, err
-			}
-			prevLogTerm = prevLogEntry.Term
-		} else {
-			prevLogEntry, err := node.GetInMemoryLog(nextIndex.(int64) - 1)
-			if err != nil {
-				log.Printf("error fetching prevLogEntry %d for %s: %v", nextIndex.(int64)-1, nodeId, err)
-				return nil, -1, err
-			}
-			prevLogTerm = prevLogEntry.Term
+		prevLogEntry, err := node.db.GetLogAtIndex(nextIndex.(int64) - 1)
+		if err != nil {
+			log.Printf("error fetching prevLogEntry %d for %s: %v", nextIndex.(int64)-1, nodeId, err)
+			return nil, -1, err
 		}
+		prevLogTerm = prevLogEntry.Term
 
 	}
 	// nextLogIndex, _ := node.nextIndex.Load(nodeId)
