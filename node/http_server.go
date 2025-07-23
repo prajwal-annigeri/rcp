@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"rcp/constants"
-	"rcp/rcppb"
 	"time"
 
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -43,7 +41,7 @@ func (node *Node) startHttpServer() {
 	log.Printf("Starting HTTP server on port %s", node.HttpPort)
 	http.HandleFunc("/put", node.putHandler)
 	http.HandleFunc("/get", node.getHandler)
-	http.HandleFunc("/delete", node.deleteHandler)
+	http.HandleFunc("/del", node.deleteHandler)
 	http.HandleFunc("/cause-failure", node.causeFailureHandler)
 	err := http.ListenAndServe(node.HttpPort, nil)
 	if err != nil {
@@ -68,20 +66,13 @@ func (node *Node) putHandler(w http.ResponseWriter, r *http.Request) {
 	value := r.URL.Query().Get("value")
 	bucket := r.URL.Query().Get("bucket")
 
-	// log.Printf("Got key %s, bucket: %s", key, bucket)
 	if key == "" || value == "" {
 		node.sendError(w, "'key' and 'value'required", http.StatusBadRequest)
 		return
 	}
 
-	if bucket == "" {
-		bucket = constants.DefaultBucket
-	}
-
-	// log.Printf("Storing: Key=%s, Value=%s", key, value)
-	log.Printf("Storing: Key=%s, Bucket=%s", key, bucket)
-
-	_, err := node.Store(context.Background(), &rcppb.StoreRequest{Key: key, Value: value, Bucket: bucket})
+	// TODO: Handle redirect to leader
+	err := node.Store(key, bucket, value)
 	if err != nil {
 		log.Printf("Store failed: %v", err)
 		node.sendError(w, "Store operation failed", http.StatusInternalServerError)
@@ -109,18 +100,14 @@ func (node *Node) getHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if bucket == "" {
-		bucket = constants.DefaultBucket
-	}
-
-	value, err := node.Get(context.Background(), &rcppb.GetValueReq{Key: key, Bucket: bucket})
+	value, err := node.Get(key, bucket)
 	if err != nil {
-		log.Printf("Get failed: %v", err)
+		log.Printf("Get failed on key %s and bucket %s: %v", key, bucket, err)
 		node.sendJSON(w, GetKVResponse{Value: "", Found: false})
 		return
 	}
 
-	node.sendJSON(w, GetKVResponse{Value: value.Value, Found: true})
+	node.sendJSON(w, GetKVResponse{Value: value, Found: true})
 }
 
 func (node *Node) deleteHandler(w http.ResponseWriter, r *http.Request) {
@@ -136,16 +123,14 @@ func (node *Node) deleteHandler(w http.ResponseWriter, r *http.Request) {
 
 	key := r.URL.Query().Get("key")
 	bucket := r.URL.Query().Get("bucket")
+
 	if key == "" {
 		node.sendError(w, "Missing 'key'", http.StatusBadRequest)
 		return
 	}
 
-	if bucket == "" {
-		bucket = constants.DefaultBucket
-	}
-
-	_, err := node.Delete(context.Background(), &rcppb.DeleteReq{Key: key, Bucket: bucket})
+	// TODO: Handle redirect to leader
+	err := node.Delete(key, bucket)
 	if err != nil {
 		log.Printf("Delete failed: %v", err)
 		node.sendError(w, "Delete operation failed", http.StatusInternalServerError)

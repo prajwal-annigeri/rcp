@@ -49,7 +49,7 @@ func (node *Node) checkHealth(nodeID string) {
 			connectedNodes := node.initialConnectionEstablished.Add(1)
 			log.Printf("Connected to %s!", nodeID)
 			// If connections with all other nodes is established, go ready
-			if connectedNodes + 1 == int64(len(node.NodeAddressMap)) {
+			if connectedNodes+1 == int64(len(node.NodeAddressMap)) {
 				node.isReady = true
 			}
 			return
@@ -90,20 +90,20 @@ func (node *Node) printState() {
 	log.Printf("%s", serverStatusString.String())
 }
 
-func (node *Node) forwardToLeader(storeReq *rcppb.StoreRequest) {
+// func (node *Node) forwardToLeader(storeReq *rcppb.StoreRequest) {
 
-	// Construct the HTTP request
-	leader, ok := node.votedFor.Load(node.currentTerm)
-	if !ok {
-		log.Println("BUG")
-		return
-	}
-	client, ok := node.ClientMap[leader.(string)]
-	if ok {
-		client.Store(context.Background(), &rcppb.StoreRequest{Key: storeReq.Key, Value: storeReq.Value, Bucket: storeReq.Bucket})
-		log.Printf("Forwarded req with key: %s, value: %s to leader: %s\n", storeReq.Key, storeReq.Value, leader.(string))
-	}
-}
+// 	// Construct the HTTP request
+// 	leader, ok := node.votedFor.Load(node.currentTerm)
+// 	if !ok {
+// 		log.Println("BUG")
+// 		return
+// 	}
+// 	client, ok := node.ClientMap[leader.(string)]
+// 	if ok {
+// 		client.Store(context.Background(), &rcppb.StoreRequest{Key: storeReq.Key, Value: storeReq.Value, Bucket: storeReq.Bucket})
+// 		log.Printf("Forwarded req with key: %s, value: %s to leader: %s\n", storeReq.Key, storeReq.Value, leader.(string))
+// 	}
+// }
 
 func (node *Node) checkInsertRecoveryLog(nodeId string) {
 	node.recoverySetLock.Lock()

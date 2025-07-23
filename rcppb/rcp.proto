@@ -42,21 +42,21 @@ message RequestVoteResponse {
     bool voteGranted = 2;
 }
 
-message StoreRequest {
-    string key = 1;
-    string value = 2;
-    string bucket = 3;
-}
+// message StoreRequest {
+//     string key = 1;
+//     string value = 2;
+//     string bucket = 3;
+// }
 
-message GetValueReq {
-    string key = 1;
-    string bucket = 2;
-}
+// message GetValueReq {
+//     string key = 1;
+//     string bucket = 2;
+// }
 
-message DeleteReq {
-    string key = 1;
-    string bucket = 2;
-}
+// message DeleteReq {
+//     string key = 1;
+//     string bucket = 2;
+// }
 
 message GetValueResponse {
     bool success = 1;
@@ -81,9 +81,9 @@ message CauseFailureRequest {
 service RCP {
     rpc AppendEntries(AppendEntriesReq) returns (AppendEntriesResponse) {}
     rpc RequestVote (RequestVoteReq) returns (RequestVoteResponse) {}
-    rpc Store(StoreRequest) returns (google.protobuf.BoolValue) {}
-    rpc Delete(DeleteReq) returns (google.protobuf.BoolValue) {}
-    rpc Get(GetValueReq) returns (GetValueResponse) {}
+    // rpc Store(StoreRequest) returns (google.protobuf.BoolValue) {}
+    // rpc Delete(DeleteReq) returns (google.protobuf.BoolValue) {}
+    // rpc Get(GetValueReq) returns (GetValueResponse) {}
     rpc SetStatus(google.protobuf.BoolValue) returns (google.protobuf.BoolValue) {}
     rpc Partition(PartitionReq) returns (google.protobuf.BoolValue) {}
     rpc Delay(DelayRequest) returns (google.protobuf.BoolValue) {}
