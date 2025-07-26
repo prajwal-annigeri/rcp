@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"rcp/constants"
-	"time"
 
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
@@ -61,7 +60,7 @@ func (node *Node) putHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Got put at %v", time.Since(node.beginTime))
+	// log.Printf("Got put at %v", time.Since(node.beginTime))
 
 	key := r.URL.Query().Get("key")
 	value := r.URL.Query().Get("value")
@@ -79,6 +78,8 @@ func (node *Node) putHandler(w http.ResponseWriter, r *http.Request) {
 	data, err := node.Store(key, bucket, value)
 
 	if err != nil {
+		log.Printf("Store failed: %v", err)
+
 		if errors.Is(err, ErrNotLeader) {
 			node.sendError(w, data, http.StatusTemporaryRedirect)
 			return
@@ -89,7 +90,6 @@ func (node *Node) putHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		log.Printf("Store failed: %v", err)
 		node.sendError(w, "Store operation failed", http.StatusInternalServerError)
 		return
 	}
@@ -194,33 +194,33 @@ func (node *Node) causeFailureHandler(w http.ResponseWriter, r *http.Request) {
 		node.maybeReviveDeadNode(w)
 		return
 	case "leader":
-		currentLeader, ok := node.votedFor.Load(node.currentTerm)
-		if !ok {
-			node.sendError(w, "BUG() no leader", http.StatusInternalServerError)
-			return
-		}
-		nodeToKill = currentLeader.(string)
+		// currentLeader, ok := node.votedFor.Load(node.currentTerm)
+		// if !ok {
+		// 	node.sendError(w, "BUG() no leader", http.StatusInternalServerError)
+		// 	return
+		// }
+		// nodeToKill = currentLeader.(string)
+		nodeToKill = node.votedFor
 	case "non-leader":
-		currentLeader, ok := node.votedFor.Load(node.currentTerm)
-		if !ok {
-			node.sendError(w, "BUG() no leader", http.StatusInternalServerError)
-			return
-		}
+		// currentLeader, ok := node.votedFor.Load(node.currentTerm)
+		// if !ok {
+		// 	node.sendError(w, "BUG() no leader", http.StatusInternalServerError)
+		// 	return
+		// }
+		currentLeader := node.votedFor
 
-		for nodeID := range node.ClientMap {
-			if nodeID != currentLeader {
-				status, _ := node.serverStatusMap.Load(nodeID)
-				if status.(bool) {
-					nodeToKill = nodeID
+		for nodeId := range node.ClientMap {
+			if nodeId != currentLeader {
+				if _, failed := node.failedSet[nodeId]; !failed {
+					nodeToKill = nodeId
 					break
 				}
 			}
 		}
 	case "random":
-		for nodeID := range node.ClientMap {
-			status, _ := node.serverStatusMap.Load(nodeID)
-			if status.(bool) {
-				nodeToKill = nodeID
+		for nodeId := range node.ClientMap {
+			if _, failed := node.failedSet[nodeId]; !failed {
+				nodeToKill = nodeId
 				break
 			}
 		}
@@ -229,6 +229,7 @@ func (node *Node) causeFailureHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("Node to kill is %s", nodeToKill)
 	if nodeToKill == node.Id {
 		_, err := node.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: false})
 		if err != nil {
@@ -249,13 +250,15 @@ func (node *Node) causeFailureHandler(w http.ResponseWriter, r *http.Request) {
 
 func (node *Node) maybeReviveDeadNode(w http.ResponseWriter) {
 	nodeToRevive := ""
-	node.serverStatusMap.Range(func(nodeId any, isAlive any) bool {
-		if !isAlive.(bool) {
-			nodeToRevive = nodeId.(string)
-			return false
-		}
-		return true
-	})
+
+	for nodeId := range node.failedSet {
+		nodeToRevive = nodeId
+		break
+	}
+
+	if !node.Live {
+		nodeToRevive = node.Id
+	}
 
 	switch nodeToRevive {
 	case "":

@@ -2,50 +2,56 @@ package node
 
 import (
 	"log"
+	"rcp/rcppb"
 )
 
-// doCallbacks informs the client that put this log entry about its commit
-// startIndex and endIndex are inclusive
-func (node *Node) doCallbacks(startIndex, endIndex int64) {
-	for i := startIndex; i <= endIndex; i++ {
-		go node.doCallback(i)
-	}
-}
+// // doCallbacks informs the client that put this log entry about its commit
+// // startIndex and endIndex are inclusive
+// func (node *Node) doCallbacks(startIndex, endIndex int64) {
+// 	for i := startIndex; i <= endIndex; i++ {
+// 		go node.doCallback(i)
+// 	}
+// }
 
 func (node *Node) doCallback(idx int64) {
-	callbackChannelRaw, ok := node.indexToCallbackChannelMap.Load(idx)
-	if !ok {
-		// log.Println("no callback channel for index %d", currIndex)
+	callbackChannel, exists := node.indexToCallbackChannelMap[idx]
+
+	if !exists {
 		return
 	}
-	callbackChannel := callbackChannelRaw.(chan struct{})
-	callbackChannel <- struct{}{}
-	// log.Printf("LOGX time doCallback: %v", time.Now().UnixMilli())
+
+	select {
+	case callbackChannel <- CallbackReply{"", nil}:
+	default:
+		// Channel already full or no listener
+	}
 	close(callbackChannel)
+
+	delete(node.indexToCallbackChannelMap, idx)
 }
 
+// This function assume mutex is already locked
 func (node *Node) executeUntil(endIndex int64) error {
-	log.Println("Called execute until", endIndex)
+	log.Printf("Called execute until %d", endIndex)
 	for node.execIndex < endIndex {
 		logEntry, err := node.db.GetLogAtIndex(node.execIndex + 1)
 		if err != nil {
-			log.Printf("No log at index %d", node.execIndex+1)
+			log.Panicf("No log at index %d", node.execIndex+1)
 			continue
 		}
 
 		switch logEntry.LogType {
-		case "store":
+		case rcppb.LogType_STORE:
 			node.db.Store(logEntry.Key, logEntry.Bucket, logEntry.Value)
-		case "delete":
+			node.doCallback(node.execIndex + 1)
+		case rcppb.LogType_DELETE:
 			node.db.Delete(logEntry.Key, logEntry.Bucket)
-		case "failure":
-			node.currAlive -= 1
-			node.serverStatusMap.Store(logEntry.NodeId, false)
-			go node.removeFromFailureSet(logEntry.NodeId)
-		case "recovery":
-			node.currAlive += 1
-			node.serverStatusMap.Store(logEntry.NodeId, true)
-			go node.removeFromRecoverySet(logEntry.NodeId)
+			node.doCallback(node.execIndex + 1)
+		case rcppb.LogType_FAILURE:
+			delete(node.pendingFailureSet, logEntry.NodeId)
+			node.failedSet[logEntry.NodeId] = struct{}{}
+		case rcppb.LogType_RECOVERY:
+			delete(node.pendingRecoverySet, logEntry.NodeId)
 		}
 
 		node.execIndex++

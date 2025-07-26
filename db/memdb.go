@@ -39,10 +39,17 @@ func (d *MemDB) Delete(key string, bucket string) error {
 	return nil
 }
 
+// AppendLog implements Database.
+func (d *MemDB) AppendLog(log *rcppb.LogEntry) (int64, error) {
+	d.logs = append(d.logs, log)
+	return int64(len(d.logs) - 1), nil
+}
+
 // PutLogAtIndex implements Database.
 func (d *MemDB) PutLogAtIndex(index int64, log *rcppb.LogEntry) error {
 	if len(d.logs) > int(index) {
-		return ErrAlreadyExists
+		// Log already exists
+		d.logs[index] = log
 	}
 
 	if len(d.logs) < int(index) {
@@ -55,7 +62,7 @@ func (d *MemDB) PutLogAtIndex(index int64, log *rcppb.LogEntry) error {
 
 // GetLogAtIndex implements Database.
 func (d *MemDB) GetLogAtIndex(index int64) (*rcppb.LogEntry, error) {
-	if len(d.logs) < int(index) {
+	if len(d.logs) <= int(index) {
 		return nil, ErrNotFound
 	}
 	return d.logs[index], nil
@@ -63,11 +70,13 @@ func (d *MemDB) GetLogAtIndex(index int64) (*rcppb.LogEntry, error) {
 
 // GetLogsFromIndex implements Database.
 // Returns empty array if no logs from and after index
-func (d *MemDB) GetLogsFromIndex(index int64) ([]*rcppb.LogEntry, error) {
+func (d *MemDB) GetLogsFromIndex(index int64, maxLogs int) ([]*rcppb.LogEntry, error) {
 	if len(d.logs) < int(index) {
 		return []*rcppb.LogEntry{}, nil
 	}
-	return d.logs[index:], nil
+
+	end := min(len(d.logs), int(index)+maxLogs)
+	return d.logs[index:end], nil
 }
 
 // PrintAllLogs implements Database.
@@ -95,11 +104,21 @@ func (d *MemDB) PrintAllLogsUnordered() error {
 	panic("unimplemented")
 }
 
-// GetLastIndexAndTerm implements Database.
-func (d *MemDB) GetLastIndexAndTerm() (int64, int64) {
+// GetLastIndex implements Database.
+func (d *MemDB) GetLastIndex() (int64, error) {
 	if len(d.logs) == 0 {
-		return -1, -1
+		return -1, nil
 	}
 
-	return int64(len(d.logs)), d.logs[len(d.logs)-1].GetTerm()
+	return int64(len(d.logs) - 1), nil
+}
+
+// GetLastTerm implements Database.
+func (d *MemDB) GetLastTerm() (int64, error) {
+	if len(d.logs) == 0 {
+		// Raft only allows term >= 0
+		return 0, nil
+	}
+
+	return d.logs[len(d.logs)-1].GetTerm(), nil
 }

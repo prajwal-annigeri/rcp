@@ -11,11 +11,13 @@ type Database interface {
 	Delete(key string, bucket string) error
 
 	// Logs related
+	AppendLog(log *rcppb.LogEntry) (int64, error)
 	PutLogAtIndex(index int64, log *rcppb.LogEntry) error
 	GetLogAtIndex(index int64) (*rcppb.LogEntry, error)
-	GetLogsFromIndex(index int64) ([]*rcppb.LogEntry, error)
+	GetLogsFromIndex(index int64, maxLogs int) ([]*rcppb.LogEntry, error)
 	PrintAllLogs() error
 	PrintAllLogsUnordered() error
 
-	GetLastIndexAndTerm() (int64, int64)
+	GetLastIndex() (int64, error)
+	GetLastTerm() (int64, error)
 }

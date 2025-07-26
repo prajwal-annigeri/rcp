@@ -2,25 +2,28 @@ package main
 
 import (
 	"flag"
-	"google.golang.org/grpc"
 	"io"
 	"log"
 	"net"
 	"rcp/node"
 	"rcp/rcppb"
+
+	"google.golang.org/grpc"
 )
 
 var (
-	nodeId   = flag.String("id", "", "Node ID")
-	logs     = flag.Bool("logs", false, "Logging")
-	protocol = flag.String("protocol", "rcp", "raft/fraft/rcp")
-	persist = flag.Bool("persist", false, "Persistent or in-memory")
-	config = flag.String("config", "", "node config JSON")
+	nodeId     = flag.String("id", "", "Node ID")
+	logs       = flag.Bool("logs", false, "Logging")
+	protocol   = flag.String("protocol", "rcp", "raft/fraft/rcp")
+	persist    = flag.Bool("persist", false, "Persistent or in-memory")
+	config     = flag.String("config", "", "node config JSON")
 	configFile = flag.String("config-file", "./nodes.json", "node config JSON filename")
 )
 
 func main() {
 	flag.Parse()
+
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 
 	if !*logs {
 		log.SetOutput(io.Discard)

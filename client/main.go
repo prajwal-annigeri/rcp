@@ -34,6 +34,10 @@ type GetValueResponse struct {
 	Value string `json:"value"`
 }
 
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
 func LoadConfig(filename string) (*Config, error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {
@@ -147,6 +151,13 @@ func (c *RCPClient) setValue() {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusTemporaryRedirect {
+		var data ErrorResponse
+		json.NewDecoder(resp.Body).Decode(&data)
+		log.Printf("Store request denied, leader is %s", data.Error)
+		return
+	}
+
 	log.Printf("Time: %v", time.Since(begin))
 
 	fmt.Println("Store request sent!")
@@ -171,10 +182,15 @@ func (c *RCPClient) deleteKey() {
 	key, _ := reader.ReadString('\n')
 	key = strings.TrimSpace(key)
 
+	fmt.Print("Enter Bucket: ")
+	bucket, _ := reader.ReadString('\n')
+	bucket = strings.TrimSpace(bucket)
+
 	begin := time.Now()
 
 	params := url.Values{}
 	params.Add("key", key)
+	params.Add("bucket", bucket)
 
 	reqURL := fmt.Sprintf("%s/del", addr) + "?" + params.Encode()
 	fmt.Println(reqURL)
@@ -191,6 +207,13 @@ func (c *RCPClient) deleteKey() {
 		return
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusTemporaryRedirect {
+		var data ErrorResponse
+		json.NewDecoder(resp.Body).Decode(&data)
+		log.Printf("Store request denied, leader is %s", data.Error)
+		return
+	}
 
 	log.Printf("Time: %v", time.Since(begin))
 
@@ -242,7 +265,7 @@ func (c *RCPClient) getValue() {
 			}
 
 			if !getValResp.Found {
-				fmt.Println("Error key not found")
+				fmt.Printf("%s: Error key not found\n", k)
 				continue
 			}
 

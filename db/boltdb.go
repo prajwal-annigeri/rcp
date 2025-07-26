@@ -95,6 +95,11 @@ func (d *BoltDB) Delete(key string, bucket string) error {
 	// })
 }
 
+// AppendLog implements Database.
+func (d *BoltDB) AppendLog(log *rcppb.LogEntry) int64 {
+	panic("unimplemented")
+}
+
 // PutLogAtIndex implements Database.
 func (d *BoltDB) PutLogAtIndex(index int64, log *rcppb.LogEntry) error {
 	panic("unimplemented")
