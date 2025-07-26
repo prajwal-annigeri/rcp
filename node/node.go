@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"rcp/constants"
 	"rcp/db"
 	"rcp/rcppb"
 	"sync"
@@ -48,9 +47,14 @@ type Node struct {
 
 	N                 int
 	K                 int
-	BatchSize         int
 	replicationQuorum int
 	protocol          string
+
+	BatchSize        int
+	ConsensusTimeout time.Duration
+	ElectionTimeout  time.Duration
+	BatchTimeout     time.Duration
+	HeartbeatTimeout time.Duration
 
 	// Not part of the protocol, safe to not use mutex for performance
 	Live bool
@@ -124,13 +128,11 @@ type Node struct {
 
 // struct to read in the config file
 type ConfigFile struct {
-	K         int     `json:"K"`
-	BatchSize int     `json:"batch_size"`
-	Nodes     []*Node `json:"nodes"`
+	Nodes []*Node `json:"nodes"`
 }
 
 // constructor
-func NewNode(thisNodeId, protocol string, persistent bool, configString, configFile string) (*Node, error) {
+func NewNode(thisNodeId, protocol string, persistent bool, configString, configFile string, K int, batchSize int, consensusTimeout int, electionTimeout int, batchTimeout int, heartbeatTimeout int) (*Node, error) {
 
 	if configString == "" {
 		// reads config file
@@ -155,7 +157,7 @@ func NewNode(thisNodeId, protocol string, persistent bool, configString, configF
 		}
 	}
 
-	log.Printf("CONFIG: K is %d", config.K)
+	log.Printf("K: %d, batch size: %d, consensus timeout: %dms, election timeout: %dms, batch timeout: %dms, heartbeat timeout: %dms", K, batchSize, consensusTimeout, electionTimeout, batchTimeout, heartbeatTimeout)
 	for _, node := range config.Nodes {
 		log.Printf("%s %s %s %s", node.Id, node.IP, node.Port, node.HttpPort)
 	}
@@ -163,10 +165,15 @@ func NewNode(thisNodeId, protocol string, persistent bool, configString, configF
 	nodes = config.Nodes
 
 	newNode := &Node{
-		Id:          thisNodeId,
-		currentTerm: 0,
-		K:           config.K,
-		BatchSize:   config.BatchSize,
+		Id:               thisNodeId,
+		currentTerm:      0,
+		K:                K,
+		BatchSize:        batchSize,
+		ConsensusTimeout: time.Duration(consensusTimeout) * time.Millisecond,
+		ElectionTimeout:  time.Duration(electionTimeout) * time.Millisecond,
+		BatchTimeout:     time.Duration(batchTimeout) * time.Millisecond,
+		HeartbeatTimeout: time.Duration(heartbeatTimeout) * time.Millisecond,
+
 		// lastApplied:           -1,
 		commitIndex: -1,
 		execIndex:   -1,
@@ -207,13 +214,13 @@ func NewNode(thisNodeId, protocol string, persistent bool, configString, configF
 
 	switch protocol {
 	case "rcp":
-		newNode.replicationQuorum = config.K + 1
+		newNode.replicationQuorum = K + 1
 		newNode.protocol = "rcp"
 	case "raft":
 		newNode.replicationQuorum = int(len(nodes)/2) + 1
 		newNode.protocol = "raft"
 	case "fraft":
-		newNode.replicationQuorum = config.K + 1
+		newNode.replicationQuorum = K + 1
 		newNode.protocol = "fraft"
 	default:
 		log.Fatalf("Invalid protocol: %s", protocol)
@@ -340,7 +347,7 @@ func (node *Node) Store(key string, bucket string, value string) (string, error)
 	case reply := <-callbackCh:
 		// log.Printf("Time to get callback after put: %v, absolute: %v", time.Since(begin), time.Now().UnixMilli())
 		return reply.Value, reply.Error
-	case <-time.After(constants.ConsensusTimeoutMilliseconds * time.Millisecond):
+	case <-time.After(node.ConsensusTimeout):
 		// log.Printf("TIMED OUT Store key: %s, bucket: %s, value: %s", key, bucket, value)
 		return "", ErrTimeOut
 	}
@@ -378,7 +385,7 @@ func (node *Node) Delete(key string, bucket string) (string, error) {
 	case reply := <-callbackCh:
 		log.Printf("Time to get callback after delete: %v", time.Since(begin))
 		return reply.Value, reply.Error
-	case <-time.After(constants.ConsensusTimeoutMilliseconds * time.Millisecond):
+	case <-time.After(node.ConsensusTimeout):
 		log.Printf("TIMED OUT Delete key: %s, bucket: %s", key, bucket)
 		return "", ErrTimeOut
 	}
@@ -413,7 +420,7 @@ func (node *Node) BecomeLeader() {
 	}
 
 	// Start replication loop
-	for nodeId, _ := range node.ClientMap {
+	for nodeId := range node.ClientMap {
 		node.nextIndex[nodeId] = node.GetLastIndex() + 1
 		node.matchIndex[nodeId] = -1
 		go node.startHeartbeatLoop(nodeId)
@@ -496,7 +503,7 @@ func (node *Node) requestVotes() {
 		go node.sendRequestVote(client, node.currentTerm, votesCh, nodeId)
 	}
 
-	timeout := time.After(constants.ElectionTimeoutMilliseconds * time.Millisecond)
+	timeout := time.After(node.ElectionTimeout)
 
 	for voteCount < electionQuorum {
 		select {

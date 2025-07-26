@@ -347,7 +347,7 @@ func (c *RCPClient) causeFailure() {
 		log.Printf("Cause failure response: %v", string(body))
 		return
 	} else {
-		log.Printf("Unexpected error", resp.StatusCode)
+		log.Printf("Unexpected error %d", resp.StatusCode)
 		return
 	}
 }
