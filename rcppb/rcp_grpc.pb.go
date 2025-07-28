@@ -28,11 +28,10 @@ type RCPClient interface {
 	// rpc Store(StoreRequest) returns (google.protobuf.BoolValue) {}
 	// rpc Delete(DeleteReq) returns (google.protobuf.BoolValue) {}
 	// rpc Get(GetValueReq) returns (GetValueResponse) {}
-	SetStatus(ctx context.Context, in *wrapperspb.BoolValue, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
+	// rpc SetStatus(google.protobuf.BoolValue) returns (google.protobuf.BoolValue) {}
 	// rpc Partition(PartitionReq) returns (google.protobuf.BoolValue) {}
 	// rpc Delay(DelayRequest) returns (google.protobuf.BoolValue) {}
 	Healthz(ctx context.Context, in *HealthzRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
-	CauseFailure(ctx context.Context, in *CauseFailureRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
 }
 
 type rCPClient struct {
@@ -61,27 +60,9 @@ func (c *rCPClient) RequestVote(ctx context.Context, in *RequestVoteReq, opts ..
 	return out, nil
 }
 
-func (c *rCPClient) SetStatus(ctx context.Context, in *wrapperspb.BoolValue, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error) {
-	out := new(wrapperspb.BoolValue)
-	err := c.cc.Invoke(ctx, "/rcppb.RCP/SetStatus", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *rCPClient) Healthz(ctx context.Context, in *HealthzRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error) {
 	out := new(wrapperspb.BoolValue)
 	err := c.cc.Invoke(ctx, "/rcppb.RCP/Healthz", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *rCPClient) CauseFailure(ctx context.Context, in *CauseFailureRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error) {
-	out := new(wrapperspb.BoolValue)
-	err := c.cc.Invoke(ctx, "/rcppb.RCP/CauseFailure", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -97,11 +78,10 @@ type RCPServer interface {
 	// rpc Store(StoreRequest) returns (google.protobuf.BoolValue) {}
 	// rpc Delete(DeleteReq) returns (google.protobuf.BoolValue) {}
 	// rpc Get(GetValueReq) returns (GetValueResponse) {}
-	SetStatus(context.Context, *wrapperspb.BoolValue) (*wrapperspb.BoolValue, error)
+	// rpc SetStatus(google.protobuf.BoolValue) returns (google.protobuf.BoolValue) {}
 	// rpc Partition(PartitionReq) returns (google.protobuf.BoolValue) {}
 	// rpc Delay(DelayRequest) returns (google.protobuf.BoolValue) {}
 	Healthz(context.Context, *HealthzRequest) (*wrapperspb.BoolValue, error)
-	CauseFailure(context.Context, *CauseFailureRequest) (*wrapperspb.BoolValue, error)
 	mustEmbedUnimplementedRCPServer()
 }
 
@@ -115,14 +95,8 @@ func (UnimplementedRCPServer) AppendEntries(context.Context, *AppendEntriesReq) 
 func (UnimplementedRCPServer) RequestVote(context.Context, *RequestVoteReq) (*RequestVoteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RequestVote not implemented")
 }
-func (UnimplementedRCPServer) SetStatus(context.Context, *wrapperspb.BoolValue) (*wrapperspb.BoolValue, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method SetStatus not implemented")
-}
 func (UnimplementedRCPServer) Healthz(context.Context, *HealthzRequest) (*wrapperspb.BoolValue, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Healthz not implemented")
-}
-func (UnimplementedRCPServer) CauseFailure(context.Context, *CauseFailureRequest) (*wrapperspb.BoolValue, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CauseFailure not implemented")
 }
 func (UnimplementedRCPServer) mustEmbedUnimplementedRCPServer() {}
 
@@ -173,24 +147,6 @@ func _RCP_RequestVote_Handler(srv interface{}, ctx context.Context, dec func(int
 	return interceptor(ctx, in, info, handler)
 }
 
-func _RCP_SetStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(wrapperspb.BoolValue)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RCPServer).SetStatus(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/rcppb.RCP/SetStatus",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RCPServer).SetStatus(ctx, req.(*wrapperspb.BoolValue))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _RCP_Healthz_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(HealthzRequest)
 	if err := dec(in); err != nil {
@@ -205,24 +161,6 @@ func _RCP_Healthz_Handler(srv interface{}, ctx context.Context, dec func(interfa
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(RCPServer).Healthz(ctx, req.(*HealthzRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RCP_CauseFailure_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CauseFailureRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RCPServer).CauseFailure(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/rcppb.RCP/CauseFailure",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RCPServer).CauseFailure(ctx, req.(*CauseFailureRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -243,16 +181,8 @@ var RCP_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _RCP_RequestVote_Handler,
 		},
 		{
-			MethodName: "SetStatus",
-			Handler:    _RCP_SetStatus_Handler,
-		},
-		{
 			MethodName: "Healthz",
 			Handler:    _RCP_Healthz_Handler,
-		},
-		{
-			MethodName: "CauseFailure",
-			Handler:    _RCP_CauseFailure_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

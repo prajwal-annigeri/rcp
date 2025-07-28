@@ -1,15 +1,11 @@
 package node
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"rcp/constants"
-
-	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 type StoreResponse struct {
@@ -32,9 +28,7 @@ type ErrorResponse struct {
 }
 
 type CauseFailureResponse struct {
-	Success     bool   `json:"success"`
-	NodeKilled  string `json:"node_killed"`
-	NodeRevived string `json:"node_revived"`
+	Success bool `json:"success"`
 }
 
 func (node *Node) startHttpServer() {
@@ -188,96 +182,89 @@ func (node *Node) sendError(w http.ResponseWriter, message string, statusCode in
 func (node *Node) causeFailureHandler(w http.ResponseWriter, r *http.Request) {
 	failureType := r.URL.Query().Get("type")
 	log.Printf("Got cause-failure of type %s", failureType)
-	var nodeToKill string
+
+	node.mutex.Lock()
+	defer node.mutex.Unlock()
+
 	switch failureType {
 	case "revive":
-		node.maybeReviveDeadNode(w)
-		return
-	case "leader":
-		// currentLeader, ok := node.votedFor.Load(node.currentTerm)
-		// if !ok {
-		// 	node.sendError(w, "BUG() no leader", http.StatusInternalServerError)
-		// 	return
-		// }
-		// nodeToKill = currentLeader.(string)
-		nodeToKill = node.votedFor
-	case "non-leader":
-		// currentLeader, ok := node.votedFor.Load(node.currentTerm)
-		// if !ok {
-		// 	node.sendError(w, "BUG() no leader", http.StatusInternalServerError)
-		// 	return
-		// }
-		currentLeader := node.votedFor
+		if node.Live {
+			node.sendJSON(w, CauseFailureResponse{Success: false})
+		} else {
+			node.Live = true
+			node.sendJSON(w, CauseFailureResponse{Success: true})
+		}
 
-		for nodeId := range node.ClientMap {
-			if nodeId != currentLeader {
-				if _, failed := node.failedSet[nodeId]; !failed {
-					nodeToKill = nodeId
-					break
-				}
+	case "leader":
+		if node.Live {
+			if node.isLeader {
+				node.Live = false
+				node.sendJSON(w, CauseFailureResponse{Success: true})
+			} else {
+				// Node is not the leader, redirect to the leader
+				node.sendError(w, node.votedFor, http.StatusTemporaryRedirect)
+			}
+		} else {
+			// Node is not alive, the node doesn't know the correct leader
+			node.sendJSON(w, CauseFailureResponse{Success: false})
+		}
+
+	case "non-leader":
+		if node.isLeader {
+			node.sendJSON(w, CauseFailureResponse{Success: false})
+		} else {
+			if node.Live {
+				node.Live = false
+				node.sendJSON(w, CauseFailureResponse{Success: true})
+			} else {
+				node.sendJSON(w, CauseFailureResponse{Success: false})
 			}
 		}
+
 	case "random":
-		for nodeId := range node.ClientMap {
-			if _, failed := node.failedSet[nodeId]; !failed {
-				nodeToKill = nodeId
-				break
-			}
+		if node.Live {
+			node.Live = false
+			node.sendJSON(w, CauseFailureResponse{Success: true})
+		} else {
+			node.sendJSON(w, CauseFailureResponse{Success: false})
 		}
+
 	default:
 		node.sendError(w, "invalid failure type", http.StatusBadRequest)
 		return
 	}
-
-	log.Printf("Node to kill is %s", nodeToKill)
-	if nodeToKill == node.Id {
-		_, err := node.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: false})
-		if err != nil {
-			node.sendError(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	} else {
-		RPCClient, ok := node.ClientMap[nodeToKill]
-		if !ok {
-			node.sendError(w, fmt.Sprintf("Invalid server or no gRPC client for '%s'", nodeToKill), http.StatusInternalServerError)
-			return
-		}
-		RPCClient.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: false})
-	}
-
-	node.sendJSON(w, CauseFailureResponse{Success: true, NodeKilled: nodeToKill})
 }
 
-func (node *Node) maybeReviveDeadNode(w http.ResponseWriter) {
-	nodeToRevive := ""
+// func (node *Node) maybeReviveDeadNode(w http.ResponseWriter) {
+// 	nodeToRevive := ""
 
-	for nodeId := range node.failedSet {
-		nodeToRevive = nodeId
-		break
-	}
+// 	for nodeId := range node.failedSet {
+// 		nodeToRevive = nodeId
+// 		break
+// 	}
 
-	if !node.Live {
-		nodeToRevive = node.Id
-	}
+// 	if !node.Live {
+// 		nodeToRevive = node.Id
+// 	}
 
-	switch nodeToRevive {
-	case "":
-		node.sendError(w, "No dead nodes", http.StatusBadRequest)
-		return
-	case node.Id:
-		_, err := node.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: true})
-		if err != nil {
-			node.sendError(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	default:
-		RPCClient, ok := node.ClientMap[nodeToRevive]
-		if !ok {
-			node.sendError(w, fmt.Sprintf("Invalid server or no gRPC client for '%s'", nodeToRevive), http.StatusInternalServerError)
-			return
-		}
-		RPCClient.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: true})
-	}
+// 	switch nodeToRevive {
+// 	case "":
+// 		node.sendError(w, "No dead nodes", http.StatusBadRequest)
+// 		return
+// 	case node.Id:
+// 		_, err := node.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: true})
+// 		if err != nil {
+// 			node.sendError(w, err.Error(), http.StatusInternalServerError)
+// 			return
+// 		}
+// 	default:
+// 		RPCClient, ok := node.ClientMap[nodeToRevive]
+// 		if !ok {
+// 			node.sendError(w, fmt.Sprintf("Invalid server or no gRPC client for '%s'", nodeToRevive), http.StatusInternalServerError)
+// 			return
+// 		}
+// 		RPCClient.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: true})
+// 	}
 
-	node.sendJSON(w, CauseFailureResponse{Success: true, NodeRevived: nodeToRevive})
-}
+// 	node.sendJSON(w, CauseFailureResponse{Success: true, NodeRevived: nodeToRevive})
+// }

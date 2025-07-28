@@ -502,50 +502,6 @@ func (*HealthzRequest) Descriptor() ([]byte, []int) {
 	return file_rcppb_rcp_proto_rawDescGZIP(), []int{6}
 }
 
-type CauseFailureRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *CauseFailureRequest) Reset() {
-	*x = CauseFailureRequest{}
-	mi := &file_rcppb_rcp_proto_msgTypes[7]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *CauseFailureRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*CauseFailureRequest) ProtoMessage() {}
-
-func (x *CauseFailureRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rcppb_rcp_proto_msgTypes[7]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use CauseFailureRequest.ProtoReflect.Descriptor instead.
-func (*CauseFailureRequest) Descriptor() ([]byte, []int) {
-	return file_rcppb_rcp_proto_rawDescGZIP(), []int{7}
-}
-
-func (x *CauseFailureRequest) GetType() string {
-	if x != nil {
-		return x.Type
-	}
-	return ""
-}
-
 var File_rcppb_rcp_proto protoreflect.FileDescriptor
 
 const file_rcppb_rcp_proto_rawDesc = "" +
@@ -579,21 +535,17 @@ const file_rcppb_rcp_proto_rawDesc = "" +
 	"\x10GetValueResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value\"\x10\n" +
-	"\x0eHealthzRequest\")\n" +
-	"\x13CauseFailureRequest\x12\x12\n" +
-	"\x04type\x18\x01 \x01(\tR\x04type*;\n" +
+	"\x0eHealthzRequest*;\n" +
 	"\aLogType\x12\t\n" +
 	"\x05STORE\x10\x00\x12\n" +
 	"\n" +
 	"\x06DELETE\x10\x01\x12\v\n" +
 	"\aFAILURE\x10\x02\x12\f\n" +
-	"\bRECOVERY\x10\x032\xe4\x02\n" +
+	"\bRECOVERY\x10\x032\xd3\x01\n" +
 	"\x03RCP\x12H\n" +
 	"\rAppendEntries\x12\x17.rcppb.AppendEntriesReq\x1a\x1c.rcppb.AppendEntriesResponse\"\x00\x12B\n" +
-	"\vRequestVote\x12\x15.rcppb.RequestVoteReq\x1a\x1a.rcppb.RequestVoteResponse\"\x00\x12E\n" +
-	"\tSetStatus\x12\x1a.google.protobuf.BoolValue\x1a\x1a.google.protobuf.BoolValue\"\x00\x12>\n" +
-	"\aHealthz\x12\x15.rcppb.HealthzRequest\x1a\x1a.google.protobuf.BoolValue\"\x00\x12H\n" +
-	"\fCauseFailure\x12\x1a.rcppb.CauseFailureRequest\x1a\x1a.google.protobuf.BoolValue\"\x00B\bZ\x06/rcppbb\x06proto3"
+	"\vRequestVote\x12\x15.rcppb.RequestVoteReq\x1a\x1a.rcppb.RequestVoteResponse\"\x00\x12>\n" +
+	"\aHealthz\x12\x15.rcppb.HealthzRequest\x1a\x1a.google.protobuf.BoolValue\"\x00B\bZ\x06/rcppbb\x06proto3"
 
 var (
 	file_rcppb_rcp_proto_rawDescOnce sync.Once
@@ -608,7 +560,7 @@ func file_rcppb_rcp_proto_rawDescGZIP() []byte {
 }
 
 var file_rcppb_rcp_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_rcppb_rcp_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_rcppb_rcp_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_rcppb_rcp_proto_goTypes = []any{
 	(LogType)(0),                  // 0: rcppb.LogType
 	(*LogEntry)(nil),              // 1: rcppb.LogEntry
@@ -618,24 +570,19 @@ var file_rcppb_rcp_proto_goTypes = []any{
 	(*RequestVoteResponse)(nil),   // 5: rcppb.RequestVoteResponse
 	(*GetValueResponse)(nil),      // 6: rcppb.GetValueResponse
 	(*HealthzRequest)(nil),        // 7: rcppb.HealthzRequest
-	(*CauseFailureRequest)(nil),   // 8: rcppb.CauseFailureRequest
-	(*wrapperspb.BoolValue)(nil),  // 9: google.protobuf.BoolValue
+	(*wrapperspb.BoolValue)(nil),  // 8: google.protobuf.BoolValue
 }
 var file_rcppb_rcp_proto_depIdxs = []int32{
 	0, // 0: rcppb.LogEntry.logType:type_name -> rcppb.LogType
 	1, // 1: rcppb.AppendEntriesReq.entries:type_name -> rcppb.LogEntry
 	2, // 2: rcppb.RCP.AppendEntries:input_type -> rcppb.AppendEntriesReq
 	4, // 3: rcppb.RCP.RequestVote:input_type -> rcppb.RequestVoteReq
-	9, // 4: rcppb.RCP.SetStatus:input_type -> google.protobuf.BoolValue
-	7, // 5: rcppb.RCP.Healthz:input_type -> rcppb.HealthzRequest
-	8, // 6: rcppb.RCP.CauseFailure:input_type -> rcppb.CauseFailureRequest
-	3, // 7: rcppb.RCP.AppendEntries:output_type -> rcppb.AppendEntriesResponse
-	5, // 8: rcppb.RCP.RequestVote:output_type -> rcppb.RequestVoteResponse
-	9, // 9: rcppb.RCP.SetStatus:output_type -> google.protobuf.BoolValue
-	9, // 10: rcppb.RCP.Healthz:output_type -> google.protobuf.BoolValue
-	9, // 11: rcppb.RCP.CauseFailure:output_type -> google.protobuf.BoolValue
-	7, // [7:12] is the sub-list for method output_type
-	2, // [2:7] is the sub-list for method input_type
+	7, // 4: rcppb.RCP.Healthz:input_type -> rcppb.HealthzRequest
+	3, // 5: rcppb.RCP.AppendEntries:output_type -> rcppb.AppendEntriesResponse
+	5, // 6: rcppb.RCP.RequestVote:output_type -> rcppb.RequestVoteResponse
+	8, // 7: rcppb.RCP.Healthz:output_type -> google.protobuf.BoolValue
+	5, // [5:8] is the sub-list for method output_type
+	2, // [2:5] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
 	2, // [2:2] is the sub-list for extension extendee
 	0, // [0:2] is the sub-list for field type_name
@@ -652,7 +599,7 @@ func file_rcppb_rcp_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rcppb_rcp_proto_rawDesc), len(file_rcppb_rcp_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   8,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

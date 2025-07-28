@@ -43,7 +43,6 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 		node.StepDown()
 	}
 
-	// TODO: Handle if log removal needed
 	if appendEntryReq.PrevLogIndex >= 0 {
 		prevLogTerm := int64(-1)
 		logEntry, err := node.db.GetLogAtIndex(appendEntryReq.PrevLogIndex)
@@ -208,19 +207,19 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 	}, nil
 }
 
-func (node *Node) SetStatus(ctx context.Context, req *wrapperspb.BoolValue) (*wrapperspb.BoolValue, error) {
-	log.Printf("Setting status: %t", req.Value)
+// func (node *Node) SetStatus(ctx context.Context, req *wrapperspb.BoolValue) (*wrapperspb.BoolValue, error) {
+// 	log.Printf("Setting status: %t", req.Value)
 
-	node.mutex.Lock()
-	defer node.mutex.Unlock()
+// 	node.mutex.Lock()
+// 	defer node.mutex.Unlock()
 
-	if req.Value {
-		node.StepDown()
-	}
-	node.Live = req.Value
+// 	if req.Value {
+// 		node.StepDown()
+// 	}
+// 	node.Live = req.Value
 
-	return &wrapperspb.BoolValue{Value: true}, nil
-}
+// 	return &wrapperspb.BoolValue{Value: true}, nil
+// }
 
 // func (node *Node) Partition(ctx context.Context, req *rcppb.PartitionReq) (*wrapperspb.BoolValue, error) {
 // 	node.reachableSetLock.Lock()
@@ -251,56 +250,56 @@ func (node *Node) Healthz(ctx context.Context, req *rcppb.HealthzRequest) (*wrap
 	return &wrapperspb.BoolValue{Value: true}, nil
 }
 
-func (node *Node) CauseFailure(ctx context.Context, req *rcppb.CauseFailureRequest) (*wrapperspb.BoolValue, error) {
-	failureType := req.Type
-	log.Printf("Got cause-failure of type %s", failureType)
-	var nodeToKill string
-	switch failureType {
-	case "leader":
-		// currentLeader, ok := node.votedFor.Load(node.currentTerm)
-		// if !ok {
-		// 	return nil, fmt.Errorf("BUG() no leader")
-		// }
-		// nodeToKill = currentLeader.(string)
-		nodeToKill = node.votedFor
-	case "non-leader":
-		// currentLeader, ok := node.votedFor.Load(node.currentTerm)
-		// if !ok {
-		// 	return nil, fmt.Errorf("BUG() no leader")
-		// }
-		currentLeader := node.votedFor
+// func (node *Node) CauseFailure(ctx context.Context, req *rcppb.CauseFailureRequest) (*wrapperspb.BoolValue, error) {
+// 	failureType := req.Type
+// 	log.Printf("Got cause-failure of type %s", failureType)
+// 	var nodeToKill string
+// 	switch failureType {
+// 	case "leader":
+// 		// currentLeader, ok := node.votedFor.Load(node.currentTerm)
+// 		// if !ok {
+// 		// 	return nil, fmt.Errorf("BUG() no leader")
+// 		// }
+// 		// nodeToKill = currentLeader.(string)
+// 		nodeToKill = node.votedFor
+// 	case "non-leader":
+// 		// currentLeader, ok := node.votedFor.Load(node.currentTerm)
+// 		// if !ok {
+// 		// 	return nil, fmt.Errorf("BUG() no leader")
+// 		// }
+// 		currentLeader := node.votedFor
 
-		for nodeId := range node.ClientMap {
-			if nodeId != currentLeader {
-				if _, failed := node.failedSet[nodeId]; failed {
-					nodeToKill = nodeId
-					break
-				}
-			}
-		}
-	case "random":
-		for nodeId := range node.ClientMap {
-			if _, failed := node.failedSet[nodeId]; failed {
-				nodeToKill = nodeId
-				break
-			}
-		}
-	default:
-		return nil, fmt.Errorf("invalid failure type. should be leader/non-leader/random")
-	}
+// 		for nodeId := range node.ClientMap {
+// 			if nodeId != currentLeader {
+// 				if _, failed := node.failedSet[nodeId]; failed {
+// 					nodeToKill = nodeId
+// 					break
+// 				}
+// 			}
+// 		}
+// 	case "random":
+// 		for nodeId := range node.ClientMap {
+// 			if _, failed := node.failedSet[nodeId]; failed {
+// 				nodeToKill = nodeId
+// 				break
+// 			}
+// 		}
+// 	default:
+// 		return nil, fmt.Errorf("invalid failure type. should be leader/non-leader/random")
+// 	}
 
-	if nodeToKill == node.Id {
-		_, err := node.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: false})
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		RPCClient, ok := node.ClientMap[nodeToKill]
-		if !ok {
-			return nil, fmt.Errorf("invalid server or no gRPC client for '%s'", nodeToKill)
-		}
-		RPCClient.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: false})
-	}
+// 	if nodeToKill == node.Id {
+// 		_, err := node.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: false})
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 	} else {
+// 		RPCClient, ok := node.ClientMap[nodeToKill]
+// 		if !ok {
+// 			return nil, fmt.Errorf("invalid server or no gRPC client for '%s'", nodeToKill)
+// 		}
+// 		RPCClient.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: false})
+// 	}
 
-	return &wrapperspb.BoolValue{Value: true}, nil
-}
+// 	return &wrapperspb.BoolValue{Value: true}, nil
+// }

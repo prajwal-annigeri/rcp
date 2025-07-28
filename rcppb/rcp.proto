@@ -81,9 +81,9 @@ message GetValueResponse {
 
 message HealthzRequest {}
 
-message CauseFailureRequest {
-    string type = 1;
-}
+// message CauseFailureRequest {
+//     string type = 1;
+// }
 
 service RCP {
     rpc AppendEntries(AppendEntriesReq) returns (AppendEntriesResponse) {}
@@ -91,9 +91,9 @@ service RCP {
     // rpc Store(StoreRequest) returns (google.protobuf.BoolValue) {}
     // rpc Delete(DeleteReq) returns (google.protobuf.BoolValue) {}
     // rpc Get(GetValueReq) returns (GetValueResponse) {}
-    rpc SetStatus(google.protobuf.BoolValue) returns (google.protobuf.BoolValue) {}
+    // rpc SetStatus(google.protobuf.BoolValue) returns (google.protobuf.BoolValue) {}
     // rpc Partition(PartitionReq) returns (google.protobuf.BoolValue) {}
     // rpc Delay(DelayRequest) returns (google.protobuf.BoolValue) {}
     rpc Healthz(HealthzRequest) returns (google.protobuf.BoolValue) {}
-    rpc CauseFailure(CauseFailureRequest) returns (google.protobuf.BoolValue) {}
+    // rpc CauseFailure(CauseFailureRequest) returns (google.protobuf.BoolValue) {}
 }
