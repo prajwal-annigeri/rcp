@@ -50,7 +50,9 @@ type Node struct {
 	replicationQuorum int
 	protocol          string
 
-	BatchSize          int
+	BatchSize  int
+	BackoffDec int64
+
 	ConsensusTimeout   time.Duration
 	ElectionTimeoutMin time.Duration
 	ElectionTimeoutMax time.Duration
@@ -141,6 +143,7 @@ func NewNode(
 	configFile string,
 	K int,
 	batchSize int,
+	backoffDec int,
 	consensusTimeout int,
 	electionTimeoutMin int,
 	electionTimeoutMax int,
@@ -170,7 +173,7 @@ func NewNode(
 		}
 	}
 
-	log.Printf("K: %d, batch size: %d, consensus timeout: %dms, election timeout: %dms-%dms, batch timeout: %dms, heartbeat timeout: %dms", K, batchSize, consensusTimeout, electionTimeoutMin, electionTimeoutMax, batchTimeout, heartbeatTimeout)
+	log.Printf("K: %d, batch size: %d, backoff decrement: %d, consensus timeout: %dms, election timeout: %dms-%dms, batch timeout: %dms, heartbeat timeout: %dms", K, batchSize, backoffDec, consensusTimeout, electionTimeoutMin, electionTimeoutMax, batchTimeout, heartbeatTimeout)
 	for _, node := range config.Nodes {
 		log.Printf("%s %s %s %s", node.Id, node.IP, node.Port, node.HttpPort)
 	}
@@ -182,6 +185,7 @@ func NewNode(
 		currentTerm:        0,
 		K:                  K,
 		BatchSize:          batchSize,
+		BackoffDec:         int64(backoffDec),
 		ConsensusTimeout:   time.Duration(consensusTimeout) * time.Millisecond,
 		ElectionTimeoutMin: time.Duration(electionTimeoutMin) * time.Millisecond,
 		ElectionTimeoutMax: time.Duration(electionTimeoutMax) * time.Millisecond,

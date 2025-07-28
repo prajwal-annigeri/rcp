@@ -270,7 +270,11 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) 
 			node.StepDown()
 		} else {
 			if backingOff {
-				node.nextIndex[nodeId] -= 1
+				if node.nextIndex[nodeId] > node.BackoffDec {
+					node.nextIndex[nodeId] -= node.BackoffDec
+				} else {
+					node.nextIndex[nodeId] = 0
+				}
 			}
 		}
 	}
