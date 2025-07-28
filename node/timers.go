@@ -21,7 +21,7 @@ func (node *Node) resetElectionTimer() {
 		default:
 		}
 	}
-	node.electionTimer.Reset(time.Duration(300+rand.Intn(400)) * time.Millisecond)
+	node.electionTimer.Reset(node.ElectionTimeoutMin + time.Duration(rand.Int63n(int64(node.ElectionTimeoutMax-node.ElectionTimeoutMin))))
 }
 
 func (node *Node) monitorElectionTimer() {

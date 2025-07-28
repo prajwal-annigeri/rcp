@@ -50,11 +50,12 @@ type Node struct {
 	replicationQuorum int
 	protocol          string
 
-	BatchSize        int
-	ConsensusTimeout time.Duration
-	ElectionTimeout  time.Duration
-	BatchTimeout     time.Duration
-	HeartbeatTimeout time.Duration
+	BatchSize          int
+	ConsensusTimeout   time.Duration
+	ElectionTimeoutMin time.Duration
+	ElectionTimeoutMax time.Duration
+	BatchTimeout       time.Duration
+	HeartbeatTimeout   time.Duration
 
 	// Not part of the protocol, safe to not use mutex for performance
 	Live bool
@@ -132,7 +133,19 @@ type ConfigFile struct {
 }
 
 // constructor
-func NewNode(thisNodeId, protocol string, persistent bool, configString, configFile string, K int, batchSize int, consensusTimeout int, electionTimeout int, batchTimeout int, heartbeatTimeout int) (*Node, error) {
+func NewNode(
+	thisNodeId,
+	protocol string,
+	persistent bool,
+	configString,
+	configFile string,
+	K int,
+	batchSize int,
+	consensusTimeout int,
+	electionTimeoutMin int,
+	electionTimeoutMax int,
+	batchTimeout int,
+	heartbeatTimeout int) (*Node, error) {
 
 	if configString == "" {
 		// reads config file
@@ -157,7 +170,7 @@ func NewNode(thisNodeId, protocol string, persistent bool, configString, configF
 		}
 	}
 
-	log.Printf("K: %d, batch size: %d, consensus timeout: %dms, election timeout: %dms, batch timeout: %dms, heartbeat timeout: %dms", K, batchSize, consensusTimeout, electionTimeout, batchTimeout, heartbeatTimeout)
+	log.Printf("K: %d, batch size: %d, consensus timeout: %dms, election timeout: %dms-%dms, batch timeout: %dms, heartbeat timeout: %dms", K, batchSize, consensusTimeout, electionTimeoutMin, electionTimeoutMax, batchTimeout, heartbeatTimeout)
 	for _, node := range config.Nodes {
 		log.Printf("%s %s %s %s", node.Id, node.IP, node.Port, node.HttpPort)
 	}
@@ -165,14 +178,15 @@ func NewNode(thisNodeId, protocol string, persistent bool, configString, configF
 	nodes = config.Nodes
 
 	newNode := &Node{
-		Id:               thisNodeId,
-		currentTerm:      0,
-		K:                K,
-		BatchSize:        batchSize,
-		ConsensusTimeout: time.Duration(consensusTimeout) * time.Millisecond,
-		ElectionTimeout:  time.Duration(electionTimeout) * time.Millisecond,
-		BatchTimeout:     time.Duration(batchTimeout) * time.Millisecond,
-		HeartbeatTimeout: time.Duration(heartbeatTimeout) * time.Millisecond,
+		Id:                 thisNodeId,
+		currentTerm:        0,
+		K:                  K,
+		BatchSize:          batchSize,
+		ConsensusTimeout:   time.Duration(consensusTimeout) * time.Millisecond,
+		ElectionTimeoutMin: time.Duration(electionTimeoutMin) * time.Millisecond,
+		ElectionTimeoutMax: time.Duration(electionTimeoutMax) * time.Millisecond,
+		BatchTimeout:       time.Duration(batchTimeout) * time.Millisecond,
+		HeartbeatTimeout:   time.Duration(heartbeatTimeout) * time.Millisecond,
 
 		// lastApplied:           -1,
 		commitIndex: -1,
@@ -503,7 +517,7 @@ func (node *Node) requestVotes() {
 		go node.sendRequestVote(client, node.currentTerm, votesCh, nodeId)
 	}
 
-	timeout := time.After(node.ElectionTimeout)
+	timeout := time.After(node.ElectionTimeoutMax)
 
 	for voteCount < electionQuorum {
 		select {
