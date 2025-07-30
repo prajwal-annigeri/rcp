@@ -25,13 +25,14 @@ const _ = grpc.SupportPackageIsVersion7
 type RCPClient interface {
 	AppendEntries(ctx context.Context, in *AppendEntriesReq, opts ...grpc.CallOption) (*AppendEntriesResponse, error)
 	RequestVote(ctx context.Context, in *RequestVoteReq, opts ...grpc.CallOption) (*RequestVoteResponse, error)
-	// rpc Store(StoreRequest) returns (google.protobuf.BoolValue) {}
-	// rpc Delete(DeleteReq) returns (google.protobuf.BoolValue) {}
-	// rpc Get(GetValueReq) returns (GetValueResponse) {}
 	// rpc SetStatus(google.protobuf.BoolValue) returns (google.protobuf.BoolValue) {}
 	// rpc Partition(PartitionReq) returns (google.protobuf.BoolValue) {}
 	// rpc Delay(DelayRequest) returns (google.protobuf.BoolValue) {}
 	Healthz(ctx context.Context, in *HealthzRequest, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
+	Store(ctx context.Context, in *StoreRequest, opts ...grpc.CallOption) (*ClientResponse, error)
+	Get(ctx context.Context, in *GetRequest, opts ...grpc.CallOption) (*ClientResponse, error)
+	Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*ClientResponse, error)
+	CauseFailure(ctx context.Context, in *CauseFailureRequest, opts ...grpc.CallOption) (*ClientResponse, error)
 }
 
 type rCPClient struct {
@@ -69,19 +70,56 @@ func (c *rCPClient) Healthz(ctx context.Context, in *HealthzRequest, opts ...grp
 	return out, nil
 }
 
+func (c *rCPClient) Store(ctx context.Context, in *StoreRequest, opts ...grpc.CallOption) (*ClientResponse, error) {
+	out := new(ClientResponse)
+	err := c.cc.Invoke(ctx, "/rcppb.RCP/Store", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rCPClient) Get(ctx context.Context, in *GetRequest, opts ...grpc.CallOption) (*ClientResponse, error) {
+	out := new(ClientResponse)
+	err := c.cc.Invoke(ctx, "/rcppb.RCP/Get", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rCPClient) Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*ClientResponse, error) {
+	out := new(ClientResponse)
+	err := c.cc.Invoke(ctx, "/rcppb.RCP/Delete", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rCPClient) CauseFailure(ctx context.Context, in *CauseFailureRequest, opts ...grpc.CallOption) (*ClientResponse, error) {
+	out := new(ClientResponse)
+	err := c.cc.Invoke(ctx, "/rcppb.RCP/CauseFailure", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RCPServer is the server API for RCP service.
 // All implementations must embed UnimplementedRCPServer
 // for forward compatibility
 type RCPServer interface {
 	AppendEntries(context.Context, *AppendEntriesReq) (*AppendEntriesResponse, error)
 	RequestVote(context.Context, *RequestVoteReq) (*RequestVoteResponse, error)
-	// rpc Store(StoreRequest) returns (google.protobuf.BoolValue) {}
-	// rpc Delete(DeleteReq) returns (google.protobuf.BoolValue) {}
-	// rpc Get(GetValueReq) returns (GetValueResponse) {}
 	// rpc SetStatus(google.protobuf.BoolValue) returns (google.protobuf.BoolValue) {}
 	// rpc Partition(PartitionReq) returns (google.protobuf.BoolValue) {}
 	// rpc Delay(DelayRequest) returns (google.protobuf.BoolValue) {}
 	Healthz(context.Context, *HealthzRequest) (*wrapperspb.BoolValue, error)
+	Store(context.Context, *StoreRequest) (*ClientResponse, error)
+	Get(context.Context, *GetRequest) (*ClientResponse, error)
+	Delete(context.Context, *DeleteRequest) (*ClientResponse, error)
+	CauseFailure(context.Context, *CauseFailureRequest) (*ClientResponse, error)
 	mustEmbedUnimplementedRCPServer()
 }
 
@@ -97,6 +135,18 @@ func (UnimplementedRCPServer) RequestVote(context.Context, *RequestVoteReq) (*Re
 }
 func (UnimplementedRCPServer) Healthz(context.Context, *HealthzRequest) (*wrapperspb.BoolValue, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Healthz not implemented")
+}
+func (UnimplementedRCPServer) Store(context.Context, *StoreRequest) (*ClientResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Store not implemented")
+}
+func (UnimplementedRCPServer) Get(context.Context, *GetRequest) (*ClientResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Get not implemented")
+}
+func (UnimplementedRCPServer) Delete(context.Context, *DeleteRequest) (*ClientResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedRCPServer) CauseFailure(context.Context, *CauseFailureRequest) (*ClientResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CauseFailure not implemented")
 }
 func (UnimplementedRCPServer) mustEmbedUnimplementedRCPServer() {}
 
@@ -165,6 +215,78 @@ func _RCP_Healthz_Handler(srv interface{}, ctx context.Context, dec func(interfa
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RCP_Store_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StoreRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RCPServer).Store(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/rcppb.RCP/Store",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RCPServer).Store(ctx, req.(*StoreRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RCP_Get_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RCPServer).Get(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/rcppb.RCP/Get",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RCPServer).Get(ctx, req.(*GetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RCP_Delete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RCPServer).Delete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/rcppb.RCP/Delete",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RCPServer).Delete(ctx, req.(*DeleteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RCP_CauseFailure_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CauseFailureRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RCPServer).CauseFailure(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/rcppb.RCP/CauseFailure",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RCPServer).CauseFailure(ctx, req.(*CauseFailureRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // RCP_ServiceDesc is the grpc.ServiceDesc for RCP service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -183,6 +305,22 @@ var RCP_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Healthz",
 			Handler:    _RCP_Healthz_Handler,
+		},
+		{
+			MethodName: "Store",
+			Handler:    _RCP_Store_Handler,
+		},
+		{
+			MethodName: "Get",
+			Handler:    _RCP_Get_Handler,
+		},
+		{
+			MethodName: "Delete",
+			Handler:    _RCP_Delete_Handler,
+		},
+		{
+			MethodName: "CauseFailure",
+			Handler:    _RCP_CauseFailure_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

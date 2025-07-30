@@ -31,7 +31,7 @@ func (node *Node) doCallback(idx int64) {
 }
 
 // This function assume mutex is already locked
-func (node *Node) executeUntil(endIndex int64) error {
+func (node *Node) executeUntilLocked(endIndex int64) error {
 	log.Printf("Called execute until %d", endIndex)
 	for node.execIndex < endIndex {
 		logEntry, err := node.db.GetLogAtIndex(node.execIndex + 1)

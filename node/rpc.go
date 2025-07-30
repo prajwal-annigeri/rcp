@@ -2,8 +2,10 @@ package node
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"rcp/constants"
 	"rcp/rcppb"
 	"time"
 
@@ -40,7 +42,7 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 	// Update term and convert to follower if needed
 	if node.currentTerm < appendEntryReq.Term {
 		node.currentTerm = appendEntryReq.Term
-		node.StepDown()
+		node.StepDownLocked()
 	}
 
 	if appendEntryReq.PrevLogIndex >= 0 {
@@ -64,7 +66,7 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 	node.resetElectionTimer()
 
 	// Append any new entries
-	err := node.insertLogs(appendEntryReq)
+	err := node.insertLogsLocked(appendEntryReq)
 	if err != nil {
 		log.Panic("Error inserting logs")
 		return &rcppb.AppendEntriesResponse{
@@ -75,8 +77,8 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 
 	// Update commit index
 	if appendEntryReq.LeaderCommit > node.commitIndex {
-		node.commitIndex = min(appendEntryReq.LeaderCommit, node.GetLastIndex())
-		err = node.executeUntil(node.commitIndex)
+		node.commitIndex = min(appendEntryReq.LeaderCommit, node.GetLastIndexLocked())
+		err = node.executeUntilLocked(node.commitIndex)
 		if err != nil {
 			log.Printf("Error executing: %v", err)
 		}
@@ -93,7 +95,7 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 }
 
 // This function assume mutex is already locked
-func (node *Node) insertLogs(appendEntryReq *rcppb.AppendEntriesReq) error {
+func (node *Node) insertLogsLocked(appendEntryReq *rcppb.AppendEntriesReq) error {
 	if len(appendEntryReq.Entries) == 0 {
 		return nil
 	}
@@ -102,7 +104,7 @@ func (node *Node) insertLogs(appendEntryReq *rcppb.AppendEntriesReq) error {
 	// lastEntryTerm := appendEntryReq.Term
 
 	for _, entry := range appendEntryReq.Entries {
-		node.InsertLog(entry, currIndex)
+		node.InsertLogLocked(entry, currIndex)
 
 		// // Lookup existing log at index
 
@@ -173,7 +175,7 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 	if requestVoteReq.Term > node.currentTerm {
 		log.Printf("Receive RequestVote with higher term from %s", requestVoteReq.CandidateId)
 		node.currentTerm = requestVoteReq.Term
-		node.StepDown()
+		node.StepDownLocked()
 		node.votedFor = ""
 		node.resetElectionTimer()
 	}
@@ -188,7 +190,7 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 	}
 
 	// Check if candidate is up to date
-	if requestVoteReq.LastLogTerm < node.GetLastTerm() || (requestVoteReq.LastLogTerm == node.GetLastTerm() && node.GetLastIndex() > requestVoteReq.LastLogIndex) {
+	if requestVoteReq.LastLogTerm < node.GetLastTermLocked() || (requestVoteReq.LastLogTerm == node.GetLastTermLocked() && node.GetLastIndexLocked() > requestVoteReq.LastLogIndex) {
 		log.Printf("Denying vote to %s as I have a more complete log", requestVoteReq.CandidateId)
 		return &rcppb.RequestVoteResponse{
 			Term:        node.currentTerm,
@@ -199,7 +201,7 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 	log.Printf("Voting for %s for term %d\n", requestVoteReq.CandidateId, requestVoteReq.Term)
 	node.currentTerm = requestVoteReq.Term
 	node.votedFor = requestVoteReq.CandidateId
-	node.StepDown()
+	node.StepDownLocked()
 
 	return &rcppb.RequestVoteResponse{
 		Term:        node.currentTerm,
@@ -249,6 +251,249 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 func (node *Node) Healthz(ctx context.Context, req *rcppb.HealthzRequest) (*wrapperspb.BoolValue, error) {
 	return &wrapperspb.BoolValue{Value: true}, nil
 }
+
+func (node *Node) Store(ctx context.Context, req *rcppb.StoreRequest) (*rcppb.ClientResponse, error) {
+	if !node.Live {
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_NOT_ALIVE,
+		}, nil
+	}
+
+	if req.Key == "" {
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_BAD_REQUEST,
+			Value:   "missing key",
+		}, nil
+	}
+
+	if req.Value == "" {
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_BAD_REQUEST,
+			Value:   "missing value",
+		}, nil
+	}
+
+	if req.Bucket == "" {
+		req.Bucket = constants.DefaultBucket
+	}
+
+	data, err := node.HandleStore(req.Key, req.Bucket, req.Value)
+
+	if err != nil {
+		log.Printf("Store failed: %v", err)
+
+		if errors.Is(err, ErrNotLeader) {
+			return &rcppb.ClientResponse{
+				Success: false,
+				Error:   rcppb.ErrorType_NOT_LEADER,
+				Value:   data,
+			}, nil
+		}
+
+		if errors.Is(err, ErrTimeOut) {
+			return &rcppb.ClientResponse{
+				Success: false,
+				Error:   rcppb.ErrorType_TIMEOUT,
+			}, nil
+		}
+
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_UNEXPECTED,
+		}, nil
+	}
+
+	return &rcppb.ClientResponse{
+		Success: true,
+	}, nil
+}
+
+func (node *Node) Get(ctx context.Context, req *rcppb.GetRequest) (*rcppb.ClientResponse, error) {
+	if !node.Live {
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_NOT_ALIVE,
+		}, nil
+	}
+
+	if req.Key == "" {
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_BAD_REQUEST,
+		}, nil
+	}
+
+	if req.Bucket == "" {
+		req.Bucket = constants.DefaultBucket
+	}
+
+	data, err := node.HandleGet(req.Key, req.Bucket)
+
+	if err != nil {
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_NOT_FOUND,
+		}, nil
+	}
+
+	return &rcppb.ClientResponse{
+		Success: true,
+		Value:   data,
+	}, nil
+}
+
+func (node *Node) Delete(ctx context.Context, req *rcppb.DeleteRequest) (*rcppb.ClientResponse, error) {
+	if !node.Live {
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_NOT_ALIVE,
+		}, nil
+	}
+
+	if req.Key == "" {
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_BAD_REQUEST,
+		}, nil
+	}
+
+	if req.Bucket == "" {
+		req.Bucket = constants.DefaultBucket
+	}
+
+	data, err := node.HandleDelete(req.Key, req.Bucket)
+
+	if err != nil {
+		log.Printf("Delete failed: %v", err)
+
+		if errors.Is(err, ErrNotLeader) {
+			return &rcppb.ClientResponse{
+				Success: false,
+				Error:   rcppb.ErrorType_NOT_LEADER,
+				Value:   data,
+			}, nil
+		}
+
+		if errors.Is(err, ErrTimeOut) {
+			return &rcppb.ClientResponse{
+				Success: false,
+				Error:   rcppb.ErrorType_TIMEOUT,
+			}, nil
+		}
+
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_UNEXPECTED,
+		}, nil
+	}
+
+	return &rcppb.ClientResponse{
+		Success: true,
+	}, nil
+}
+
+func (node *Node) CauseFailure(ctx context.Context, req *rcppb.CauseFailureRequest) (*rcppb.ClientResponse, error) {
+	log.Printf("Got cause-failure of type %s", req.Type)
+
+	node.mutex.Lock()
+	defer node.mutex.Unlock()
+
+	switch req.Type {
+	case rcppb.FailureType_REVIVE:
+		if node.Live {
+			return &rcppb.ClientResponse{
+				Success: false,
+				Error:   rcppb.ErrorType_UNEXPECTED,
+				Value:   "still alive",
+			}, nil
+		} else {
+			node.Live = true
+			return &rcppb.ClientResponse{
+				Success: true,
+			}, nil
+		}
+
+	case rcppb.FailureType_LEADER:
+		if node.Live {
+			if node.isLeader {
+				node.Live = false
+				return &rcppb.ClientResponse{
+					Success: true,
+				}, nil
+			} else {
+				// Node is not the leader, redirect to the leader
+				return &rcppb.ClientResponse{
+					Success: false,
+					Error:   rcppb.ErrorType_NOT_LEADER,
+					Value:   node.votedFor,
+				}, nil
+			}
+		} else {
+			// Node is not alive, the node doesn't know the correct leader
+			return &rcppb.ClientResponse{
+				Success: false,
+				Error:   rcppb.ErrorType_NOT_ALIVE,
+			}, nil
+		}
+
+	case rcppb.FailureType_REPLICA:
+		if node.isLeader {
+			return &rcppb.ClientResponse{
+				Success: false,
+				Error:   rcppb.ErrorType_UNEXPECTED,
+				Value:   "is leader",
+			}, nil
+		} else {
+			if node.Live {
+				node.Live = false
+				return &rcppb.ClientResponse{
+					Success: true,
+				}, nil
+			} else {
+				return &rcppb.ClientResponse{
+					Success: false,
+					Error:   rcppb.ErrorType_NOT_ALIVE,
+				}, nil
+			}
+		}
+
+	case rcppb.FailureType_RANDOM:
+		if node.Live {
+			node.Live = false
+			return &rcppb.ClientResponse{
+				Success: true,
+			}, nil
+		} else {
+			return &rcppb.ClientResponse{
+				Success: false,
+				Error:   rcppb.ErrorType_NOT_ALIVE,
+			}, nil
+		}
+
+	default:
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_BAD_REQUEST,
+		}, nil
+	}
+}
+
+// func (node *Node) Delay(ctx context.Context, req *rcppb.DelayRequest) (*wrapperspb.BoolValue, error) {
+// 	to := req.NodeId
+// 	delay := req.Delay
+
+// 	if delay <= 0 || to == "" {
+// 		return nil, errors.New("invalid request argument")
+// 	}
+
+// 	log.Printf("Setting delay: To=%s, Delay=%d", to, delay)
+
+// 	node.delays.Store(to, delay)
+// 	return &wrapperspb.BoolValue{Value: true}, nil
+// }
 
 // func (node *Node) CauseFailure(ctx context.Context, req *rcppb.CauseFailureRequest) (*wrapperspb.BoolValue, error) {
 // 	failureType := req.Type

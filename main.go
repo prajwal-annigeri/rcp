@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -50,7 +51,7 @@ func main() {
 		log.Fatalf("Error creating node: %v", err)
 	}
 
-	lis, err := net.Listen("tcp", node.Port)
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", node.Port))
 	if err != nil {
 		log.Fatalf("Failed to listen on port %v: %v", node.Port, err)
 	}

@@ -69,7 +69,7 @@ func (node *Node) putHandler(w http.ResponseWriter, r *http.Request) {
 		bucket = constants.DefaultBucket
 	}
 
-	data, err := node.Store(key, bucket, value)
+	data, err := node.HandleStore(key, bucket, value)
 
 	if err != nil {
 		log.Printf("Store failed: %v", err)
@@ -114,7 +114,7 @@ func (node *Node) getHandler(w http.ResponseWriter, r *http.Request) {
 		bucket = constants.DefaultBucket
 	}
 
-	value, err := node.Get(key, bucket)
+	value, err := node.HandleGet(key, bucket)
 	if err != nil {
 		log.Printf("Get failed on key %s and bucket %s: %v", key, bucket, err)
 		node.sendJSON(w, GetKVResponse{Value: "", Found: false})
@@ -147,7 +147,7 @@ func (node *Node) deleteHandler(w http.ResponseWriter, r *http.Request) {
 		bucket = constants.DefaultBucket
 	}
 
-	data, err := node.Delete(key, bucket)
+	data, err := node.HandleDelete(key, bucket)
 
 	if err != nil {
 		if errors.Is(err, ErrNotLeader) {

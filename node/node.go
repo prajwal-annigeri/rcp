@@ -253,7 +253,7 @@ func NewNode(
 			newNode.HttpPort = node.HttpPort
 			newNode.Port = node.Port
 		}
-		newNode.NodeAddressMap[node.Id] = fmt.Sprintf("%s%s", node.IP, node.Port)
+		newNode.NodeAddressMap[node.Id] = fmt.Sprintf("%s:%s", node.IP, node.Port)
 		// newNode.serverStatusMap.Store(node.Id, true)
 		// newNode.reachableNodes[node.Id] = struct{}{}
 		// newNode.failedAppendEntries.Store(thisNodeId, 0)
@@ -324,7 +324,7 @@ func (node *Node) Start() {
 }
 
 // This function assume mutex is already locked
-func (node *Node) GetLastTerm() int64 {
+func (node *Node) GetLastTermLocked() int64 {
 	lastTerm, err := node.db.GetLastTerm()
 	if err != nil {
 		log.Panicf("Error getting last term: %v", err)
@@ -334,7 +334,7 @@ func (node *Node) GetLastTerm() int64 {
 }
 
 // This function assume mutex is already locked
-func (node *Node) GetLastIndex() int64 {
+func (node *Node) GetLastIndexLocked() int64 {
 	lastIndex, err := node.db.GetLastIndex()
 	if err != nil {
 		log.Panicf("Error getting last index: %v", err)
@@ -343,7 +343,7 @@ func (node *Node) GetLastIndex() int64 {
 	return lastIndex
 }
 
-func (node *Node) Store(key string, bucket string, value string) (string, error) {
+func (node *Node) HandleStore(key string, bucket string, value string) (string, error) {
 	// log.Printf("Received data: Key=%s, Value=%s, Bucket=%s", key, value, bucket)
 
 	callbackCh := make(chan CallbackReply, 1)
@@ -366,12 +366,12 @@ func (node *Node) Store(key string, bucket string, value string) (string, error)
 		// log.Printf("Time to get callback after put: %v, absolute: %v", time.Since(begin), time.Now().UnixMilli())
 		return reply.Value, reply.Error
 	case <-time.After(node.ConsensusTimeout):
-		// log.Printf("TIMED OUT Store key: %s, bucket: %s, value: %s", key, bucket, value)
+		// log.Printf("Time out to store key %s", key)
 		return "", ErrTimeOut
 	}
 }
 
-func (node *Node) Get(key string, bucket string) (string, error) {
+func (node *Node) HandleGet(key string, bucket string) (string, error) {
 	// No lock used here for performance and cost of mistake is very low since
 	// the get operation run first, if changes were supposed to happen, the data
 	// would be the same as if lock is used
@@ -382,7 +382,7 @@ func (node *Node) Get(key string, bucket string) (string, error) {
 	return value, nil
 }
 
-func (node *Node) Delete(key string, bucket string) (string, error) {
+func (node *Node) HandleDelete(key string, bucket string) (string, error) {
 	log.Printf("Received delete: Key=%s, Bucket=%s", key, bucket)
 
 	callbackCh := make(chan CallbackReply, 1)
@@ -410,7 +410,7 @@ func (node *Node) Delete(key string, bucket string) (string, error) {
 }
 
 // This function assume mutex is already locked
-func (node *Node) StepDown() {
+func (node *Node) StepDownLocked() {
 	// Shutdown all replication loop
 	close(node.stepdownChan)
 
@@ -423,7 +423,7 @@ func (node *Node) StepDown() {
 }
 
 // This function assume mutex is already locked
-func (node *Node) BecomeLeader() {
+func (node *Node) BecomeLeaderLocked() {
 	log.Println("Became leader!")
 
 	node.isLeader = true
@@ -439,14 +439,14 @@ func (node *Node) BecomeLeader() {
 
 	// Start replication loop
 	for nodeId := range node.ClientMap {
-		node.nextIndex[nodeId] = node.GetLastIndex() + 1
+		node.nextIndex[nodeId] = node.GetLastIndexLocked() + 1
 		node.matchIndex[nodeId] = -1
 		go node.startHeartbeatLoop(nodeId)
 	}
 }
 
 // This function assume mutex is already locked
-func (node *Node) AppendLog(logEntry *rcppb.LogEntry) int64 {
+func (node *Node) AppendLogLocked(logEntry *rcppb.LogEntry) int64 {
 	if logEntry.LogType == rcppb.LogType_FAILURE {
 		node.pendingFailureSet[logEntry.NodeId] = struct{}{}
 	}
@@ -465,7 +465,7 @@ func (node *Node) AppendLog(logEntry *rcppb.LogEntry) int64 {
 }
 
 // This function assume mutex is already locked
-func (node *Node) InsertLog(logEntry *rcppb.LogEntry, idx int64) {
+func (node *Node) InsertLogLocked(logEntry *rcppb.LogEntry, idx int64) {
 	existingEntry, err := node.db.GetLogAtIndex(idx)
 
 	if err == nil {
@@ -498,10 +498,13 @@ func (node *Node) requestVotes() {
 	node.mutex.Lock()
 	log.Println("Requesting votes start")
 
-	electionQuorum := node.N - node.K - len(node.failedSet) - len(node.pendingRecoverySet)
+	electionQuorum := node.N - node.K
 	if node.protocol == "raft" {
 		electionQuorum = (len(nodes) / 2) + 1
+	} else if node.protocol == "rcp" {
+		electionQuorum = electionQuorum - len(node.failedSet) - len(node.pendingRecoverySet)
 	}
+
 	node.currentTerm++
 	log.Printf("Starting election with quorum size %d and term %d", electionQuorum, node.currentTerm)
 
@@ -530,7 +533,7 @@ func (node *Node) requestVotes() {
 
 			if vote.term > node.currentTerm {
 				node.currentTerm = vote.term
-				node.StepDown()
+				node.StepDownLocked()
 				node.mutex.Unlock()
 				close(votesCh)
 				return
@@ -564,7 +567,7 @@ func (node *Node) requestVotes() {
 
 	node.mutex.Lock()
 	if node.isCandidate {
-		node.BecomeLeader()
+		node.BecomeLeaderLocked()
 	}
 	node.mutex.Unlock()
 }
@@ -588,8 +591,8 @@ func (node *Node) sendRequestVote(client rcppb.RCPClient, term int64, votesChan 
 	resp, err := client.RequestVote(context.Background(), &rcppb.RequestVoteReq{
 		Term:         term,
 		CandidateId:  node.Id,
-		LastLogIndex: node.GetLastIndex(),
-		LastLogTerm:  node.GetLastTerm(),
+		LastLogIndex: node.GetLastIndexLocked(),
+		LastLogTerm:  node.GetLastTermLocked(),
 		// Delay:        int64(delay),
 	})
 

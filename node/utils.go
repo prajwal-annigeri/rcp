@@ -90,7 +90,7 @@ func printMenu() {
 
 // utility function to print state of node
 func (node *Node) printState() {
-	log.Printf("Term: %d\nPrev Term: %d, Prev Log Index: %d isLeader: %t\n", node.currentTerm, node.GetLastTerm(), node.GetLastIndex(), node.isLeader)
+	log.Printf("Term: %d\nPrev Term: %d, Prev Log Index: %d isLeader: %t\n", node.currentTerm, node.GetLastTermLocked(), node.GetLastIndexLocked(), node.isLeader)
 	log.Printf("Current alive: %d", node.N-len(node.failedSet)-len(node.pendingRecoverySet))
 	// log.Printf("Reachable nodes: %v", node.reachableNodes)
 	log.Println("Next Index: ")

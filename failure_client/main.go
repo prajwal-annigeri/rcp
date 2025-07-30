@@ -1,18 +1,22 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"math/rand"
-	"net/http"
 	"os"
+	"rcp/rcppb"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type Config struct {
@@ -21,16 +25,8 @@ type Config struct {
 
 type Node struct {
 	ID   string `json:"id"`
-	Port string `json:"http_port"`
+	Port string `json:"port"`
 	IP   string `json:"ip"`
-}
-
-type ErrorResponse struct {
-	Error string `json:"error"`
-}
-
-type CauseFailureResponse struct {
-	Success bool `json:"success"`
 }
 
 type FailureEntity struct {
@@ -69,18 +65,18 @@ func (f *FailureList) Set(value string) error {
 var (
 	configFile = flag.String("config-file", "./nodes.json", "node config JSON filename")
 
-	contactNode      string
-	nodeToAddressMap map[string]string
-	killedNodes      map[string]struct{}
-	failures         FailureList
-	config           Config
+	contactNode   string
+	grpcClientMap map[string]rcppb.RCPClient
+	killedNodes   map[string]struct{}
+	failures      FailureList
+	config        Config
 )
 
 func main() {
 	flag.Var(&failures, "failures", "List of failures in time:type format, e.g., 5:leader,10:non-leader,15:random,20:revive")
 	flag.Parse()
 
-	nodeToAddressMap = make(map[string]string)
+	grpcClientMap = make(map[string]rcppb.RCPClient)
 	killedNodes = map[string]struct{}{}
 
 	configJSON, err := os.Open(*configFile)
@@ -100,10 +96,24 @@ func main() {
 	}
 
 	for _, node := range config.Nodes {
-		nodeToAddressMap[node.ID] = fmt.Sprintf("%s%s", node.IP, node.Port)
+		addr := fmt.Sprintf("%s:%s", node.IP, node.Port)
 		if contactNode == "" {
 			contactNode = node.ID
 		}
+
+		conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			log.Fatalf("Failed to connect to %s", node.ID)
+		}
+
+		client := rcppb.NewRCPClient(conn)
+		grpcClientMap[node.ID] = client
+
+		_, err = grpcClientMap[node.ID].Healthz(context.Background(), &rcppb.HealthzRequest{})
+		if err != nil {
+			log.Fatalf("Failed to connect to %s", node.ID)
+		}
+		log.Printf("Connected to %s!", node.ID)
 	}
 
 	var wg sync.WaitGroup
@@ -117,7 +127,7 @@ func main() {
 
 func getRandomAliveNodeId() string {
 	var nodeIds []string
-	for nodeId := range nodeToAddressMap {
+	for nodeId := range grpcClientMap {
 		if _, killed := killedNodes[nodeId]; !killed {
 			nodeIds = append(nodeIds, nodeId)
 		}
@@ -167,312 +177,54 @@ func causeFailure(failureType string, waitInSeconds int64, wg *sync.WaitGroup) {
 			}
 		}
 
-		res, err := http.Get(fmt.Sprintf("http://%s/cause-failure?type=%s", nodeToAddressMap[contactServer], failureType))
+		var req *rcppb.CauseFailureRequest
+		switch failureType {
+		case "revive":
+			req = &rcppb.CauseFailureRequest{
+				Type: rcppb.FailureType_REVIVE,
+			}
+		case "random":
+			req = &rcppb.CauseFailureRequest{
+				Type: rcppb.FailureType_RANDOM,
+			}
+		case "leader":
+			req = &rcppb.CauseFailureRequest{
+				Type: rcppb.FailureType_LEADER,
+			}
+		case "non-leader":
+			req = &rcppb.CauseFailureRequest{
+				Type: rcppb.FailureType_REPLICA,
+			}
+		}
+
+		client := grpcClientMap[contactServer]
+		res, err := client.CauseFailure(context.Background(), req)
+
 		if err != nil {
 			log.Panicf("Unexpected error trying to cause failure %s at %d seconds on %s: %v", failureType, waitInSeconds, contactServer, err)
 		}
 
-		defer res.Body.Close()
+		if res.Success {
+			log.Printf("Caused failure %s at %d seconds on %s", failureType, waitInSeconds, contactServer)
 
-		// Redirected to a leader
-		if res.StatusCode == http.StatusTemporaryRedirect {
-			var data ErrorResponse
-			json.NewDecoder(res.Body).Decode(&data)
-			contactServer = data.Error
-			continue
-		}
-
-		if res.StatusCode == http.StatusOK {
-			var data CauseFailureResponse
-			json.NewDecoder(res.Body).Decode(&data)
-			if data.Success {
-				log.Printf("Caused failure %s at %d seconds on %s", failureType, waitInSeconds, contactServer)
-
-				if failureType == "revive" {
-					delete(killedNodes, contactServer)
-				} else {
-					killedNodes[contactServer] = struct{}{}
-				}
-
-				return
+			if failureType == "revive" {
+				delete(killedNodes, contactServer)
 			} else {
-				// Try random node
-				log.Printf("Tried to cause failure %s at %d seconds on %s", failureType, waitInSeconds, contactServer)
-				contactServer = ""
+				killedNodes[contactServer] = struct{}{}
+			}
+
+			return
+		} else {
+			// Redirected to a leader
+			if res.Error == rcppb.ErrorType_NOT_LEADER {
+				contactServer = res.Value
 				continue
 			}
-		}
 
-		log.Panicf("Unexpected status code trying to cause failure %s at %d seconds on %s: %d", failureType, waitInSeconds, contactServer, res.StatusCode)
+			// Try random node
+			log.Printf("Tried to cause failure %s at %d seconds on %s", failureType, waitInSeconds, contactServer)
+			contactServer = ""
+			continue
+		}
 	}
 }
-
-// type Node struct {
-// 	ID       string `json:"id"`
-// 	HttpPort string `json:"http_port"`
-// 	IP       string `json:"ip"`
-// }
-
-// type Config struct {
-// 	Nodes []*Node `json:"nodes"`
-// }
-
-// type rcpDB struct {
-// 	httpClient           http.Client
-// 	serverAddr           string
-// 	fieldcount           int64
-// 	nodes                []*Node
-// 	lastContactServerIdx int
-// }
-
-// type GetValueResponse struct {
-// 	Found bool   `json:"found"`
-// 	Value string `json:"value"`
-// }
-
-// type ErrorResponse struct {
-// 	Error string `json:"error"`
-// }
-
-// type rcpCreator struct{}
-
-// func init() {
-// 	ycsb.RegisterDBCreator("rcp", rcpCreator{})
-// }
-
-// func (c rcpCreator) Create(p *properties.Properties) (ycsb.DB, error) {
-// 	rcp := &rcpDB{}
-// 	configStr, ok := p.Get("rcp.config")
-// 	if !ok {
-// 		return nil, fmt.Errorf("property 'rcp.config' must be specified")
-// 	}
-// 	var config Config
-// 	err := json.Unmarshal([]byte(configStr), &config)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("error unmarshalling config: %v", err)
-// 	}
-
-// 	rcp.nodes = config.Nodes
-// 	client := http.Client{
-// 		Timeout: 3 * time.Second,
-// 	}
-
-// 	rcp.changeContactServer("")
-
-// 	rcp.httpClient = client
-// 	rcp.fieldcount = p.GetInt64(prop.FieldCount, prop.FieldCountDefault)
-// 	return rcp, nil
-// }
-
-// func (db *rcpDB) changeContactServer(contactServer string) {
-// 	var newContactServer *Node
-
-// 	if contactServer == "" {
-// 		db.lastContactServerIdx = (db.lastContactServerIdx + 1) % len(db.nodes)
-// 		newContactServer = db.nodes[db.lastContactServerIdx]
-// 	} else {
-// 		for _, node := range db.nodes {
-// 			if node.ID == contactServer {
-// 				newContactServer = node
-// 				break
-// 			}
-// 		}
-
-// 		if newContactServer == nil {
-// 			panic("Bad contact server given " + contactServer)
-// 		}
-// 	}
-
-// 	db.serverAddr = "http://" + newContactServer.IP + newContactServer.HttpPort
-// 	fmt.Printf("Setting contact address: %s\n", db.serverAddr)
-// }
-
-// func (db *rcpDB) Delete(ctx context.Context, table string, key string) error {
-// 	reqURL := fmt.Sprintf("%s/del?key=%s", db.serverAddr, key)
-
-// 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, reqURL, nil)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	res, err := db.httpClient.Do(req)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer res.Body.Close()
-
-// 	if res.StatusCode == http.StatusOK {
-// 		return nil
-// 	}
-
-// 	// Redirected to a new leader
-// 	if res.StatusCode == http.StatusTemporaryRedirect {
-// 		var data ErrorResponse
-// 		json.NewDecoder(res.Body).Decode(&data)
-// 		db.changeContactServer(data.Error)
-// 		return db.Delete(ctx, table, key)
-// 	}
-
-// 	// Retry with other server
-// 	if res.StatusCode == http.StatusExpectationFailed {
-// 		db.changeContactServer("")
-// 		return db.Delete(ctx, table, key)
-// 	}
-
-// 	return fmt.Errorf("bad status code: %d", res.StatusCode)
-// }
-
-// func (db *rcpDB) CleanupThread(ctx context.Context) {}
-
-// func (db *rcpDB) Close() error {
-// 	return nil
-// }
-
-// func (db *rcpDB) InitThread(ctx context.Context, threadID int, threadCount int) context.Context {
-// 	return ctx
-// }
-
-// func (db *rcpDB) Insert(ctx context.Context, table string, key string, values map[string][]byte) error {
-
-// 	valueStringMap := make(map[string]string)
-
-// 	for k, v := range values {
-// 		valueStringMap[k] = string(v)
-// 	}
-
-// 	return db.insertStringStringMap(ctx, key, table, valueStringMap)
-
-// }
-
-// func (db *rcpDB) Read(ctx context.Context, table string, key string, fields []string) (map[string][]byte, error) {
-
-// 	stringStringMap, err := db.getFieldValueMap(ctx, key, table)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to read value: %v", err)
-// 	}
-
-// 	data := make(map[string][]byte)
-// 	for k, v := range stringStringMap {
-// 		data[k] = []byte(v)
-// 	}
-
-// 	return data, err
-// }
-
-// func (db *rcpDB) Scan(ctx context.Context, table string, startKey string, count int, fields []string) ([]map[string][]byte, error) {
-// 	return nil, fmt.Errorf("scan is not supported")
-// }
-
-// func (db *rcpDB) Update(ctx context.Context, table string, key string, values map[string][]byte) (err error) {
-
-// 	fullUpdate := false
-// 	if int64(len(values)) == db.fieldcount {
-// 		fullUpdate = true
-// 	}
-
-// 	if fullUpdate {
-// 		return db.Insert(ctx, table, key, values)
-// 	} else {
-// 		keyValueMap, err := db.getFieldValueMap(ctx, key, table)
-// 		if err != nil {
-// 			return err
-// 		}
-// 		for k, v := range values {
-// 			keyValueMap[k] = string(v)
-// 		}
-// 		return db.insertStringStringMap(ctx, key, table, keyValueMap)
-// 	}
-// }
-
-// func (db *rcpDB) getFieldValueMap(ctx context.Context, key, table string) (map[string]string, error) {
-// 	baseURL := fmt.Sprintf("%s/get", db.serverAddr)
-
-// 	params := url.Values{}
-// 	params.Add("key", key)
-// 	params.Add("bucket", table)
-
-// 	reqURL := baseURL + "?" + params.Encode()
-
-// 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	resp, err := db.httpClient.Do(req)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	defer resp.Body.Close()
-
-// 	// Retry with other server
-// 	if resp.StatusCode == http.StatusExpectationFailed {
-// 		db.changeContactServer("")
-// 		return db.getFieldValueMap(ctx, key, table)
-// 	}
-
-// 	if resp.StatusCode != http.StatusOK {
-// 		return nil, fmt.Errorf("bad status code: %d", resp.StatusCode)
-// 	}
-
-// 	var getValResp GetValueResponse
-// 	if err := json.NewDecoder(resp.Body).Decode(&getValResp); err != nil {
-// 		return nil, fmt.Errorf("failed to decode json response: %w", err)
-// 	}
-
-// 	if !getValResp.Found {
-// 		return nil, fmt.Errorf("key %s not found", key)
-// 	}
-
-// 	var stringStringMap map[string]string
-// 	if err := json.Unmarshal([]byte(getValResp.Value), &stringStringMap); err != nil {
-// 		return nil, fmt.Errorf("failed to decode inner JSON: %v", err)
-// 	}
-
-// 	return stringStringMap, nil
-// }
-
-// func (db *rcpDB) insertStringStringMap(ctx context.Context, key string, table string, valueStringMap map[string]string) error {
-// 	baseURL := fmt.Sprintf("%s/put", db.serverAddr)
-// 	valueBytes, err := json.Marshal(valueStringMap)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	params := url.Values{}
-// 	params.Add("key", key)
-// 	params.Add("value", string(valueBytes))
-// 	params.Add("bucket", table)
-
-// 	reqURL := baseURL + "?" + params.Encode()
-
-// 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, nil)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	res, err := db.httpClient.Do(req)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer res.Body.Close()
-
-// 	if res.StatusCode == http.StatusOK {
-// 		return nil
-// 	}
-
-// 	// Redirected to a new leader
-// 	if res.StatusCode == http.StatusTemporaryRedirect {
-// 		var data ErrorResponse
-// 		json.NewDecoder(res.Body).Decode(&data)
-// 		db.changeContactServer(data.Error)
-// 		return db.insertStringStringMap(ctx, key, table, valueStringMap)
-// 	}
-
-// 	// Retry with other server
-// 	if res.StatusCode == http.StatusExpectationFailed {
-// 		db.changeContactServer("")
-// 		return db.insertStringStringMap(ctx, key, table, valueStringMap)
-// 	}
-
-// 	return fmt.Errorf("bad status code: %d", res.StatusCode)
-// }

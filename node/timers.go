@@ -48,7 +48,7 @@ func (node *Node) startReceiverLoop(entriesCh <-chan LogWithCallbackChannel) {
 
 			// Add to own log if leader
 			if node.isLeader {
-				currIdx := node.AppendLog(entry.LogEntry)
+				currIdx := node.AppendLogLocked(entry.LogEntry)
 				node.indexToCallbackChannelMap[currIdx] = entry.CallbackChannel
 				batchCount += 1
 
@@ -80,6 +80,7 @@ func (node *Node) startReceiverLoop(entriesCh <-chan LogWithCallbackChannel) {
 }
 
 func (node *Node) flushBatch() {
+	log.Println("Flush batch called")
 	for nodeId := range node.ClientMap {
 		go node.sendHeartbeatTo(nodeId, false)
 	}
@@ -125,7 +126,7 @@ func (node *Node) startHeartbeatLoop(nodeId string) {
 										NodeId:  nodeId,
 										Term:    node.currentTerm,
 									}
-									node.AppendLog(failureLog)
+									node.AppendLogLocked(failureLog)
 								}
 							}
 						}
@@ -228,7 +229,7 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) 
 					NodeId:  nodeId,
 					Term:    node.currentTerm,
 				}
-				node.AppendLog(recoveryLog)
+				node.AppendLogLocked(recoveryLog)
 			}
 		}
 	}
@@ -258,7 +259,7 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) 
 				if nodeRequired <= 0 {
 					if nodeIdMatchIndexPair.Value > commitIndex {
 						node.commitIndex = nodeIdMatchIndexPair.Value
-						node.executeUntil(node.commitIndex)
+						node.executeUntilLocked(node.commitIndex)
 					}
 				}
 			}
@@ -267,7 +268,7 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) 
 		// TODO: Should this be here?
 		if resp.Term > node.currentTerm {
 			node.currentTerm = resp.Term
-			node.StepDown()
+			node.StepDownLocked()
 		} else {
 			if backingOff {
 				if node.nextIndex[nodeId] > node.BackoffDec {

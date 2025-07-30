@@ -49,25 +49,46 @@ message RequestVoteResponse {
     bool voteGranted = 2;
 }
 
-// message StoreRequest {
-//     string key = 1;
-//     string value = 2;
-//     string bucket = 3;
-// }
-
-// message GetValueReq {
-//     string key = 1;
-//     string bucket = 2;
-// }
-
-// message DeleteReq {
-//     string key = 1;
-//     string bucket = 2;
-// }
-
-message GetValueResponse {
-    bool success = 1;
+message StoreRequest {
+    string key = 1;
     string value = 2;
+    string bucket = 3;
+}
+
+message GetRequest {
+    string key = 1;
+    string bucket = 2;
+}
+
+message DeleteRequest {
+    string key = 1;
+    string bucket = 2;
+}
+
+enum FailureType {
+    REVIVE = 0;
+    RANDOM = 1;
+    LEADER = 2;
+    REPLICA = 3;
+}
+
+message CauseFailureRequest {
+    FailureType type = 1;
+}
+
+enum ErrorType {
+    NOT_ALIVE = 0;
+    NOT_LEADER = 1;
+    NOT_FOUND = 2;
+    BAD_REQUEST = 3;
+    UNEXPECTED = 4;
+    TIMEOUT = 5;
+}
+
+message ClientResponse {
+    bool success = 1;
+    ErrorType error = 2;
+    string value = 3;
 }
 
 // message PartitionReq {
@@ -81,19 +102,15 @@ message GetValueResponse {
 
 message HealthzRequest {}
 
-// message CauseFailureRequest {
-//     string type = 1;
-// }
-
 service RCP {
     rpc AppendEntries(AppendEntriesReq) returns (AppendEntriesResponse) {}
     rpc RequestVote (RequestVoteReq) returns (RequestVoteResponse) {}
-    // rpc Store(StoreRequest) returns (google.protobuf.BoolValue) {}
-    // rpc Delete(DeleteReq) returns (google.protobuf.BoolValue) {}
-    // rpc Get(GetValueReq) returns (GetValueResponse) {}
     // rpc SetStatus(google.protobuf.BoolValue) returns (google.protobuf.BoolValue) {}
     // rpc Partition(PartitionReq) returns (google.protobuf.BoolValue) {}
     // rpc Delay(DelayRequest) returns (google.protobuf.BoolValue) {}
     rpc Healthz(HealthzRequest) returns (google.protobuf.BoolValue) {}
-    // rpc CauseFailure(CauseFailureRequest) returns (google.protobuf.BoolValue) {}
+    rpc Store(StoreRequest) returns (ClientResponse) {}
+    rpc Get(GetRequest) returns (ClientResponse) {}
+    rpc Delete(DeleteRequest) returns (ClientResponse) {}
+    rpc CauseFailure(CauseFailureRequest) returns (ClientResponse) {}
 }

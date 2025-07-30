@@ -74,6 +74,116 @@ func (LogType) EnumDescriptor() ([]byte, []int) {
 	return file_rcppb_rcp_proto_rawDescGZIP(), []int{0}
 }
 
+type FailureType int32
+
+const (
+	FailureType_REVIVE  FailureType = 0
+	FailureType_RANDOM  FailureType = 1
+	FailureType_LEADER  FailureType = 2
+	FailureType_REPLICA FailureType = 3
+)
+
+// Enum value maps for FailureType.
+var (
+	FailureType_name = map[int32]string{
+		0: "REVIVE",
+		1: "RANDOM",
+		2: "LEADER",
+		3: "REPLICA",
+	}
+	FailureType_value = map[string]int32{
+		"REVIVE":  0,
+		"RANDOM":  1,
+		"LEADER":  2,
+		"REPLICA": 3,
+	}
+)
+
+func (x FailureType) Enum() *FailureType {
+	p := new(FailureType)
+	*p = x
+	return p
+}
+
+func (x FailureType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (FailureType) Descriptor() protoreflect.EnumDescriptor {
+	return file_rcppb_rcp_proto_enumTypes[1].Descriptor()
+}
+
+func (FailureType) Type() protoreflect.EnumType {
+	return &file_rcppb_rcp_proto_enumTypes[1]
+}
+
+func (x FailureType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use FailureType.Descriptor instead.
+func (FailureType) EnumDescriptor() ([]byte, []int) {
+	return file_rcppb_rcp_proto_rawDescGZIP(), []int{1}
+}
+
+type ErrorType int32
+
+const (
+	ErrorType_NOT_ALIVE   ErrorType = 0
+	ErrorType_NOT_LEADER  ErrorType = 1
+	ErrorType_NOT_FOUND   ErrorType = 2
+	ErrorType_BAD_REQUEST ErrorType = 3
+	ErrorType_UNEXPECTED  ErrorType = 4
+	ErrorType_TIMEOUT     ErrorType = 5
+)
+
+// Enum value maps for ErrorType.
+var (
+	ErrorType_name = map[int32]string{
+		0: "NOT_ALIVE",
+		1: "NOT_LEADER",
+		2: "NOT_FOUND",
+		3: "BAD_REQUEST",
+		4: "UNEXPECTED",
+		5: "TIMEOUT",
+	}
+	ErrorType_value = map[string]int32{
+		"NOT_ALIVE":   0,
+		"NOT_LEADER":  1,
+		"NOT_FOUND":   2,
+		"BAD_REQUEST": 3,
+		"UNEXPECTED":  4,
+		"TIMEOUT":     5,
+	}
+)
+
+func (x ErrorType) Enum() *ErrorType {
+	p := new(ErrorType)
+	*p = x
+	return p
+}
+
+func (x ErrorType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ErrorType) Descriptor() protoreflect.EnumDescriptor {
+	return file_rcppb_rcp_proto_enumTypes[2].Descriptor()
+}
+
+func (ErrorType) Type() protoreflect.EnumType {
+	return &file_rcppb_rcp_proto_enumTypes[2]
+}
+
+func (x ErrorType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ErrorType.Descriptor instead.
+func (ErrorType) EnumDescriptor() ([]byte, []int) {
+	return file_rcppb_rcp_proto_rawDescGZIP(), []int{2}
+}
+
 type LogEntry struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	LogType       LogType                `protobuf:"varint,1,opt,name=logType,proto3,enum=rcppb.LogType" json:"logType,omitempty"`
@@ -414,28 +524,29 @@ func (x *RequestVoteResponse) GetVoteGranted() bool {
 	return false
 }
 
-type GetValueResponse struct {
+type StoreRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
 	Value         string                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	Bucket        string                 `protobuf:"bytes,3,opt,name=bucket,proto3" json:"bucket,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetValueResponse) Reset() {
-	*x = GetValueResponse{}
+func (x *StoreRequest) Reset() {
+	*x = StoreRequest{}
 	mi := &file_rcppb_rcp_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetValueResponse) String() string {
+func (x *StoreRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetValueResponse) ProtoMessage() {}
+func (*StoreRequest) ProtoMessage() {}
 
-func (x *GetValueResponse) ProtoReflect() protoreflect.Message {
+func (x *StoreRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_rcppb_rcp_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -447,19 +558,234 @@ func (x *GetValueResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetValueResponse.ProtoReflect.Descriptor instead.
-func (*GetValueResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use StoreRequest.ProtoReflect.Descriptor instead.
+func (*StoreRequest) Descriptor() ([]byte, []int) {
 	return file_rcppb_rcp_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *GetValueResponse) GetSuccess() bool {
+func (x *StoreRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *StoreRequest) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+func (x *StoreRequest) GetBucket() string {
+	if x != nil {
+		return x.Bucket
+	}
+	return ""
+}
+
+type GetRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Bucket        string                 `protobuf:"bytes,2,opt,name=bucket,proto3" json:"bucket,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetRequest) Reset() {
+	*x = GetRequest{}
+	mi := &file_rcppb_rcp_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetRequest) ProtoMessage() {}
+
+func (x *GetRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rcppb_rcp_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetRequest.ProtoReflect.Descriptor instead.
+func (*GetRequest) Descriptor() ([]byte, []int) {
+	return file_rcppb_rcp_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *GetRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *GetRequest) GetBucket() string {
+	if x != nil {
+		return x.Bucket
+	}
+	return ""
+}
+
+type DeleteRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Bucket        string                 `protobuf:"bytes,2,opt,name=bucket,proto3" json:"bucket,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteRequest) Reset() {
+	*x = DeleteRequest{}
+	mi := &file_rcppb_rcp_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteRequest) ProtoMessage() {}
+
+func (x *DeleteRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rcppb_rcp_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteRequest.ProtoReflect.Descriptor instead.
+func (*DeleteRequest) Descriptor() ([]byte, []int) {
+	return file_rcppb_rcp_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *DeleteRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *DeleteRequest) GetBucket() string {
+	if x != nil {
+		return x.Bucket
+	}
+	return ""
+}
+
+type CauseFailureRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Type          FailureType            `protobuf:"varint,1,opt,name=type,proto3,enum=rcppb.FailureType" json:"type,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CauseFailureRequest) Reset() {
+	*x = CauseFailureRequest{}
+	mi := &file_rcppb_rcp_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CauseFailureRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CauseFailureRequest) ProtoMessage() {}
+
+func (x *CauseFailureRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rcppb_rcp_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CauseFailureRequest.ProtoReflect.Descriptor instead.
+func (*CauseFailureRequest) Descriptor() ([]byte, []int) {
+	return file_rcppb_rcp_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *CauseFailureRequest) GetType() FailureType {
+	if x != nil {
+		return x.Type
+	}
+	return FailureType_REVIVE
+}
+
+type ClientResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Error         ErrorType              `protobuf:"varint,2,opt,name=error,proto3,enum=rcppb.ErrorType" json:"error,omitempty"`
+	Value         string                 `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ClientResponse) Reset() {
+	*x = ClientResponse{}
+	mi := &file_rcppb_rcp_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClientResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClientResponse) ProtoMessage() {}
+
+func (x *ClientResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rcppb_rcp_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClientResponse.ProtoReflect.Descriptor instead.
+func (*ClientResponse) Descriptor() ([]byte, []int) {
+	return file_rcppb_rcp_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ClientResponse) GetSuccess() bool {
 	if x != nil {
 		return x.Success
 	}
 	return false
 }
 
-func (x *GetValueResponse) GetValue() string {
+func (x *ClientResponse) GetError() ErrorType {
+	if x != nil {
+		return x.Error
+	}
+	return ErrorType_NOT_ALIVE
+}
+
+func (x *ClientResponse) GetValue() string {
 	if x != nil {
 		return x.Value
 	}
@@ -474,7 +800,7 @@ type HealthzRequest struct {
 
 func (x *HealthzRequest) Reset() {
 	*x = HealthzRequest{}
-	mi := &file_rcppb_rcp_proto_msgTypes[6]
+	mi := &file_rcppb_rcp_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -486,7 +812,7 @@ func (x *HealthzRequest) String() string {
 func (*HealthzRequest) ProtoMessage() {}
 
 func (x *HealthzRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rcppb_rcp_proto_msgTypes[6]
+	mi := &file_rcppb_rcp_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -499,7 +825,7 @@ func (x *HealthzRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthzRequest.ProtoReflect.Descriptor instead.
 func (*HealthzRequest) Descriptor() ([]byte, []int) {
-	return file_rcppb_rcp_proto_rawDescGZIP(), []int{6}
+	return file_rcppb_rcp_proto_rawDescGZIP(), []int{10}
 }
 
 var File_rcppb_rcp_proto protoreflect.FileDescriptor
@@ -531,21 +857,56 @@ const file_rcppb_rcp_proto_rawDesc = "" +
 	"\vlastLogTerm\x18\x04 \x01(\x03R\vlastLogTerm\"K\n" +
 	"\x13RequestVoteResponse\x12\x12\n" +
 	"\x04term\x18\x01 \x01(\x03R\x04term\x12 \n" +
-	"\vvoteGranted\x18\x02 \x01(\bR\vvoteGranted\"B\n" +
-	"\x10GetValueResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value\"\x10\n" +
+	"\vvoteGranted\x18\x02 \x01(\bR\vvoteGranted\"N\n" +
+	"\fStoreRequest\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\x12\x16\n" +
+	"\x06bucket\x18\x03 \x01(\tR\x06bucket\"6\n" +
+	"\n" +
+	"GetRequest\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x16\n" +
+	"\x06bucket\x18\x02 \x01(\tR\x06bucket\"9\n" +
+	"\rDeleteRequest\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x16\n" +
+	"\x06bucket\x18\x02 \x01(\tR\x06bucket\"=\n" +
+	"\x13CauseFailureRequest\x12&\n" +
+	"\x04type\x18\x01 \x01(\x0e2\x12.rcppb.FailureTypeR\x04type\"h\n" +
+	"\x0eClientResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12&\n" +
+	"\x05error\x18\x02 \x01(\x0e2\x10.rcppb.ErrorTypeR\x05error\x12\x14\n" +
+	"\x05value\x18\x03 \x01(\tR\x05value\"\x10\n" +
 	"\x0eHealthzRequest*;\n" +
 	"\aLogType\x12\t\n" +
 	"\x05STORE\x10\x00\x12\n" +
 	"\n" +
 	"\x06DELETE\x10\x01\x12\v\n" +
 	"\aFAILURE\x10\x02\x12\f\n" +
-	"\bRECOVERY\x10\x032\xd3\x01\n" +
+	"\bRECOVERY\x10\x03*>\n" +
+	"\vFailureType\x12\n" +
+	"\n" +
+	"\x06REVIVE\x10\x00\x12\n" +
+	"\n" +
+	"\x06RANDOM\x10\x01\x12\n" +
+	"\n" +
+	"\x06LEADER\x10\x02\x12\v\n" +
+	"\aREPLICA\x10\x03*g\n" +
+	"\tErrorType\x12\r\n" +
+	"\tNOT_ALIVE\x10\x00\x12\x0e\n" +
+	"\n" +
+	"NOT_LEADER\x10\x01\x12\r\n" +
+	"\tNOT_FOUND\x10\x02\x12\x0f\n" +
+	"\vBAD_REQUEST\x10\x03\x12\x0e\n" +
+	"\n" +
+	"UNEXPECTED\x10\x04\x12\v\n" +
+	"\aTIMEOUT\x10\x052\xbb\x03\n" +
 	"\x03RCP\x12H\n" +
 	"\rAppendEntries\x12\x17.rcppb.AppendEntriesReq\x1a\x1c.rcppb.AppendEntriesResponse\"\x00\x12B\n" +
 	"\vRequestVote\x12\x15.rcppb.RequestVoteReq\x1a\x1a.rcppb.RequestVoteResponse\"\x00\x12>\n" +
-	"\aHealthz\x12\x15.rcppb.HealthzRequest\x1a\x1a.google.protobuf.BoolValue\"\x00B\bZ\x06/rcppbb\x06proto3"
+	"\aHealthz\x12\x15.rcppb.HealthzRequest\x1a\x1a.google.protobuf.BoolValue\"\x00\x125\n" +
+	"\x05Store\x12\x13.rcppb.StoreRequest\x1a\x15.rcppb.ClientResponse\"\x00\x121\n" +
+	"\x03Get\x12\x11.rcppb.GetRequest\x1a\x15.rcppb.ClientResponse\"\x00\x127\n" +
+	"\x06Delete\x12\x14.rcppb.DeleteRequest\x1a\x15.rcppb.ClientResponse\"\x00\x12C\n" +
+	"\fCauseFailure\x12\x1a.rcppb.CauseFailureRequest\x1a\x15.rcppb.ClientResponse\"\x00B\bZ\x06/rcppbb\x06proto3"
 
 var (
 	file_rcppb_rcp_proto_rawDescOnce sync.Once
@@ -559,33 +920,49 @@ func file_rcppb_rcp_proto_rawDescGZIP() []byte {
 	return file_rcppb_rcp_proto_rawDescData
 }
 
-var file_rcppb_rcp_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_rcppb_rcp_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_rcppb_rcp_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_rcppb_rcp_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_rcppb_rcp_proto_goTypes = []any{
 	(LogType)(0),                  // 0: rcppb.LogType
-	(*LogEntry)(nil),              // 1: rcppb.LogEntry
-	(*AppendEntriesReq)(nil),      // 2: rcppb.AppendEntriesReq
-	(*AppendEntriesResponse)(nil), // 3: rcppb.AppendEntriesResponse
-	(*RequestVoteReq)(nil),        // 4: rcppb.RequestVoteReq
-	(*RequestVoteResponse)(nil),   // 5: rcppb.RequestVoteResponse
-	(*GetValueResponse)(nil),      // 6: rcppb.GetValueResponse
-	(*HealthzRequest)(nil),        // 7: rcppb.HealthzRequest
-	(*wrapperspb.BoolValue)(nil),  // 8: google.protobuf.BoolValue
+	(FailureType)(0),              // 1: rcppb.FailureType
+	(ErrorType)(0),                // 2: rcppb.ErrorType
+	(*LogEntry)(nil),              // 3: rcppb.LogEntry
+	(*AppendEntriesReq)(nil),      // 4: rcppb.AppendEntriesReq
+	(*AppendEntriesResponse)(nil), // 5: rcppb.AppendEntriesResponse
+	(*RequestVoteReq)(nil),        // 6: rcppb.RequestVoteReq
+	(*RequestVoteResponse)(nil),   // 7: rcppb.RequestVoteResponse
+	(*StoreRequest)(nil),          // 8: rcppb.StoreRequest
+	(*GetRequest)(nil),            // 9: rcppb.GetRequest
+	(*DeleteRequest)(nil),         // 10: rcppb.DeleteRequest
+	(*CauseFailureRequest)(nil),   // 11: rcppb.CauseFailureRequest
+	(*ClientResponse)(nil),        // 12: rcppb.ClientResponse
+	(*HealthzRequest)(nil),        // 13: rcppb.HealthzRequest
+	(*wrapperspb.BoolValue)(nil),  // 14: google.protobuf.BoolValue
 }
 var file_rcppb_rcp_proto_depIdxs = []int32{
-	0, // 0: rcppb.LogEntry.logType:type_name -> rcppb.LogType
-	1, // 1: rcppb.AppendEntriesReq.entries:type_name -> rcppb.LogEntry
-	2, // 2: rcppb.RCP.AppendEntries:input_type -> rcppb.AppendEntriesReq
-	4, // 3: rcppb.RCP.RequestVote:input_type -> rcppb.RequestVoteReq
-	7, // 4: rcppb.RCP.Healthz:input_type -> rcppb.HealthzRequest
-	3, // 5: rcppb.RCP.AppendEntries:output_type -> rcppb.AppendEntriesResponse
-	5, // 6: rcppb.RCP.RequestVote:output_type -> rcppb.RequestVoteResponse
-	8, // 7: rcppb.RCP.Healthz:output_type -> google.protobuf.BoolValue
-	5, // [5:8] is the sub-list for method output_type
-	2, // [2:5] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	0,  // 0: rcppb.LogEntry.logType:type_name -> rcppb.LogType
+	3,  // 1: rcppb.AppendEntriesReq.entries:type_name -> rcppb.LogEntry
+	1,  // 2: rcppb.CauseFailureRequest.type:type_name -> rcppb.FailureType
+	2,  // 3: rcppb.ClientResponse.error:type_name -> rcppb.ErrorType
+	4,  // 4: rcppb.RCP.AppendEntries:input_type -> rcppb.AppendEntriesReq
+	6,  // 5: rcppb.RCP.RequestVote:input_type -> rcppb.RequestVoteReq
+	13, // 6: rcppb.RCP.Healthz:input_type -> rcppb.HealthzRequest
+	8,  // 7: rcppb.RCP.Store:input_type -> rcppb.StoreRequest
+	9,  // 8: rcppb.RCP.Get:input_type -> rcppb.GetRequest
+	10, // 9: rcppb.RCP.Delete:input_type -> rcppb.DeleteRequest
+	11, // 10: rcppb.RCP.CauseFailure:input_type -> rcppb.CauseFailureRequest
+	5,  // 11: rcppb.RCP.AppendEntries:output_type -> rcppb.AppendEntriesResponse
+	7,  // 12: rcppb.RCP.RequestVote:output_type -> rcppb.RequestVoteResponse
+	14, // 13: rcppb.RCP.Healthz:output_type -> google.protobuf.BoolValue
+	12, // 14: rcppb.RCP.Store:output_type -> rcppb.ClientResponse
+	12, // 15: rcppb.RCP.Get:output_type -> rcppb.ClientResponse
+	12, // 16: rcppb.RCP.Delete:output_type -> rcppb.ClientResponse
+	12, // 17: rcppb.RCP.CauseFailure:output_type -> rcppb.ClientResponse
+	11, // [11:18] is the sub-list for method output_type
+	4,  // [4:11] is the sub-list for method input_type
+	4,  // [4:4] is the sub-list for extension type_name
+	4,  // [4:4] is the sub-list for extension extendee
+	0,  // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_rcppb_rcp_proto_init() }
@@ -598,8 +975,8 @@ func file_rcppb_rcp_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rcppb_rcp_proto_rawDesc), len(file_rcppb_rcp_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   7,
+			NumEnums:      3,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
