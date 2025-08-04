@@ -275,7 +275,7 @@ func NewNode(
 func (node *Node) Start() {
 
 	// starts HTTP server used by clients to interact with server
-	go node.startHttpServer()
+	// go node.startHttpServer()
 	// time.Sleep(1 * time.Second)
 
 	// initialize next index (log of index to send to a node) for every node to 0

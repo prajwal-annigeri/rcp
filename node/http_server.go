@@ -3,6 +3,7 @@ package node
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"rcp/constants"
@@ -37,7 +38,7 @@ func (node *Node) startHttpServer() {
 	http.HandleFunc("/get", node.getHandler)
 	http.HandleFunc("/del", node.deleteHandler)
 	http.HandleFunc("/cause-failure", node.causeFailureHandler)
-	err := http.ListenAndServe(node.HttpPort, nil)
+	err := http.ListenAndServe(fmt.Sprintf(":%s", node.HttpPort), nil)
 	if err != nil {
 		log.Printf("Failed to start HTTP server: %v", err)
 	}
