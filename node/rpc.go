@@ -45,6 +45,10 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 		node.StepDownLocked()
 	}
 
+	// log.Println("Reset election timer")
+	node.resetElectionTimer()
+
+	// Check if node is outdated
 	if appendEntryReq.PrevLogIndex >= 0 {
 		prevLogTerm := int64(-1)
 		logEntry, err := node.db.GetLogAtIndex(appendEntryReq.PrevLogIndex)
@@ -54,16 +58,13 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 		}
 
 		if prevLogTerm != appendEntryReq.PrevLogTerm {
-			log.Printf("Denying append entry because prev log entryterm does not match, mine: %d, in req: %d", prevLogTerm, appendEntryReq.PrevLogTerm)
+			log.Printf("Denying append entry because prev log entry term does not match, mine: %d, in req: %d", prevLogTerm, appendEntryReq.PrevLogTerm)
 			return &rcppb.AppendEntriesResponse{
 				Term:    node.currentTerm,
 				Success: false,
 			}, nil
 		}
 	}
-
-	// log.Println("Reset election timer")
-	node.resetElectionTimer()
 
 	// Append any new entries
 	err := node.insertLogsLocked(appendEntryReq)
@@ -420,6 +421,7 @@ func (node *Node) CauseFailure(ctx context.Context, req *rcppb.CauseFailureReque
 		if node.Live {
 			if node.isLeader {
 				node.Live = false
+				node.StepDownLocked()
 				return &rcppb.ClientResponse{
 					Success: true,
 				}, nil
@@ -463,6 +465,7 @@ func (node *Node) CauseFailure(ctx context.Context, req *rcppb.CauseFailureReque
 	case rcppb.FailureType_RANDOM:
 		if node.Live {
 			node.Live = false
+			node.StepDownLocked()
 			return &rcppb.ClientResponse{
 				Success: true,
 			}, nil
