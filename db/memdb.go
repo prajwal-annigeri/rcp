@@ -50,6 +50,7 @@ func (d *MemDB) PutLogAtIndex(index int64, log *rcppb.LogEntry) error {
 	if len(d.logs) > int(index) {
 		// Log already exists
 		d.logs[index] = log
+		return nil
 	}
 
 	if len(d.logs) < int(index) {

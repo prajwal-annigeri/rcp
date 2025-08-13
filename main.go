@@ -32,7 +32,7 @@ var (
 func main() {
 	flag.Parse()
 
-	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+	log.SetFlags(log.Ltime | log.Lshortfile)
 
 	if !*logs {
 		log.SetOutput(io.Discard)

@@ -363,7 +363,7 @@ func (node *Node) HandleStore(key string, bucket string, value string) (string, 
 
 	select {
 	case reply := <-callbackCh:
-		// log.Printf("Time to get callback after put: %v, absolute: %v", time.Since(begin), time.Now().UnixMilli())
+		// log.Printf("Time to get callback after put: %v, absolute: %v, and error: %v", time.Since(begin), time.Now().UnixMilli(), reply.Error)
 		return reply.Value, reply.Error
 	case <-time.After(node.ConsensusTimeout):
 		// log.Printf("Time out to store key %s", key)

@@ -23,7 +23,7 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 	}
 
 	if len(appendEntryReq.Entries) > 0 {
-		log.Printf("LOGX Received AppendEntries from %s with %d entries. Term: %d\n", appendEntryReq.LeaderId, len(appendEntryReq.Entries), appendEntryReq.Term)
+		log.Printf("Received AppendEntries from %s with %d entries at term %d and prev index %d\n", appendEntryReq.LeaderId, len(appendEntryReq.Entries), appendEntryReq.Term, appendEntryReq.PrevLogIndex)
 	}
 
 	node.mutex.Lock()

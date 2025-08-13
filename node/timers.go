@@ -202,7 +202,7 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) 
 
 	// Send AppendEntries
 	if len(req.Entries) > 0 {
-		log.Printf("Sending AppendEntries to %s with %d entries", nodeId, len(req.Entries))
+		log.Printf("Sending AppendEntries to %s with %d entries starting from index %d", nodeId, len(req.Entries), nextIndex)
 	}
 
 	client := node.ClientMap[nodeId]
@@ -255,12 +255,14 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) 
 				}
 
 				nodeRequired -= 1
+				// log.Printf("Matched index %d and node required %d", nodeIdMatchIndexPair.Value, nodeRequired)
 
 				if nodeRequired <= 0 {
 					if nodeIdMatchIndexPair.Value > commitIndex {
 						node.commitIndex = nodeIdMatchIndexPair.Value
 						node.executeUntilLocked(node.commitIndex)
 					}
+					break
 				}
 			}
 		}
