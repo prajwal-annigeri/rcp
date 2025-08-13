@@ -475,6 +475,7 @@ func (node *Node) InsertLogLocked(logEntry *rcppb.LogEntry, idx int64) {
 
 		if existingEntry.LogType == rcppb.LogType_RECOVERY {
 			delete(node.pendingRecoverySet, existingEntry.NodeId)
+			node.failedSet[logEntry.NodeId] = struct{}{}
 		}
 	}
 
