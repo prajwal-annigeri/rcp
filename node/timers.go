@@ -57,7 +57,7 @@ func (node *Node) startReceiverLoop(entriesCh <-chan LogWithCallbackChannel) {
 					timer.Reset(node.BatchTimeout)
 				}
 
-				if batchCount >= node.BatchSize {
+				if batchCount >= node.BatchSizeLow {
 					node.flushBatch()
 					batchCount = 0
 					if !timer.Stop() {
@@ -171,7 +171,7 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) 
 	// Build AppendEntries
 	nextIndex := node.nextIndex[nodeId]
 
-	entries, err := node.db.GetLogsFromIndex(nextIndex, node.BatchSize)
+	entries, err := node.db.GetLogsFromIndex(nextIndex, node.BatchSizeHigh)
 	if err != nil {
 		log.Panicf("Error getting logs from index %d: %v", nextIndex, err)
 	}

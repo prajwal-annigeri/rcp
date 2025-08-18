@@ -20,8 +20,9 @@ var (
 	config             = flag.String("config", "", "node config JSON")
 	configFile         = flag.String("config-file", "./nodes.json", "node config JSON filename")
 	K                  = flag.Int("K", 2, "Value of K")
-	batchSize          = flag.Int("batch-size", 100, "Maximum batch size per AppendEntries")
-	backoffDec         = flag.Int("backoff-decrement", 10, "Backoff decrement when new leader arise")
+	batchSizeLow       = flag.Int("batch-low", 100, "Batch size of new request to trigger AppendEntries")
+	batchSizeHigh      = flag.Int("batch-high", 200, "Maximum batch size per AppendEntries")
+	backoffDec         = flag.Int("backoff-decrement", 200, "Backoff decrement when new leader arise")
 	consensusTimeout   = flag.Int("ct", 1000, "Consensus timeout in milliseconds")
 	electionTimeoutMin = flag.Int("et-min", 500, "Minimum election timeout in milliseconds")
 	electionTimeoutMax = flag.Int("et-max", 1000, "Maximum election timeout in milliseconds")
@@ -46,7 +47,7 @@ func main() {
 		log.Fatalf("protocol can either 'rcp' or 'fraft' or 'raft'")
 	}
 
-	node, err := node.NewNode(*nodeId, *protocol, *persist, *config, *configFile, *K, *batchSize, *backoffDec, *consensusTimeout, *electionTimeoutMin, *electionTimeoutMax, *batchTimeout, *heartbeatTimeout)
+	node, err := node.NewNode(*nodeId, *protocol, *persist, *config, *configFile, *K, *batchSizeLow, *batchSizeHigh, *backoffDec, *consensusTimeout, *electionTimeoutMin, *electionTimeoutMax, *batchTimeout, *heartbeatTimeout)
 	if err != nil {
 		log.Fatalf("Error creating node: %v", err)
 	}
