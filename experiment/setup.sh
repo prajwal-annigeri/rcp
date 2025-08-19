@@ -37,14 +37,14 @@ nodes=()
 if [[ "$USE_PRIVATE_IP" == "true" ]]; then
   echo "Using private IPs..."
   for i in "${!PRIVATE_IPS[@]}"; do
-    id="$((i + 1))"
+    id=$(printf "\\$(printf '%03o' $((65 + i)))")
     ip="${PRIVATE_IPS[$i]}"
     nodes+=("{\"id\":\"$id\",\"port\":\"$PORT\",\"http_port\":\"$HTTP_PORT\",\"ip\":\"$ip\"}")
   done
 else
   echo "Using public IPs..."
   for i in "${!PUBLIC_IPS[@]}"; do
-    id="$((i + 1))"
+    id=$(printf "\\$(printf '%03o' $((65 + i)))")
     ip="${PUBLIC_IPS[$i]}"
     nodes+=("{\"id\":\"$id\",\"port\":\"$PORT\",\"http_port\":\"$HTTP_PORT\",\"ip\":\"$ip\"}")
   done

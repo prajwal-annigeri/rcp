@@ -260,22 +260,22 @@ if __name__ == "__main__":
     # Plot G2 Failures
     # ==================================================
 
-    G2_folder = "output/G2"
-    G2_data = read_output_folder(G2_folder)
+    # G2_folder = "output/G2"
+    # G2_data = read_output_folder(G2_folder)
 
-    # plot_failure(G2_data, "None", EXPERIMENT_TIME_G2, title="None", smoothing=SMOOTH_DATA)
-    plot_failure(G2_data, "RF", EXPERIMENT_TIME_G2, title="RF", smoothing=SMOOTH_DATA)
-    # plot_failure(G2_data, "LF", EXPERIMENT_TIME_G2, title="LF", smoothing=SMOOTH_DATA)
-    # plot_failure(G2_data, "ROF", EXPERIMENT_TIME_G2, title="ROF", smoothing=SMOOTH_DATA)
-    # plot_failure(G2_data, "LOF", EXPERIMENT_TIME_G2, title="LOF", smoothing=SMOOTH_DATA)
+    # # plot_failure(G2_data, "None", EXPERIMENT_TIME_G2, title="None", smoothing=SMOOTH_DATA)
+    # plot_failure(G2_data, "RF", EXPERIMENT_TIME_G2, title="RF", smoothing=SMOOTH_DATA)
+    # # plot_failure(G2_data, "LF", EXPERIMENT_TIME_G2, title="LF", smoothing=SMOOTH_DATA)
+    # # plot_failure(G2_data, "ROF", EXPERIMENT_TIME_G2, title="ROF", smoothing=SMOOTH_DATA)
+    # # plot_failure(G2_data, "LOF", EXPERIMENT_TIME_G2, title="LOF", smoothing=SMOOTH_DATA)
 
     # ==================================================
     # Plot NG N
     # ==================================================
 
-    # N_folder = "output/N"
-    # N_data = read_output_folder(N_folder)
+    N_folder = "output/N"
+    N_data = read_output_folder(N_folder)
 
-    # plot_failure(N_data, "None", EXPERIMENT_TIME_N, tick=5, label_keys=["protocol", "N"], title="None", smoothing=SMOOTH_DATA)
-    # plot_failure(N_data, "RF", EXPERIMENT_TIME_N, tick=5, label_keys=["protocol", "N"], title="RF", smoothing=SMOOTH_DATA)
-    # plot_failure(N_data, "LF", EXPERIMENT_TIME_N, tick=5, label_keys=["protocol", "N"], title="LF", smoothing=SMOOTH_DATA)
+    plot_failure(N_data, "None", EXPERIMENT_TIME_N, tick=5, label_keys=["protocol", "N"], title="None", smoothing=SMOOTH_DATA)
+    plot_failure(N_data, "RF", EXPERIMENT_TIME_N, tick=5, label_keys=["protocol", "N"], title="RF", smoothing=SMOOTH_DATA)
+    plot_failure(N_data, "LF", EXPERIMENT_TIME_N, tick=5, label_keys=["protocol", "N"], title="LF", smoothing=SMOOTH_DATA)

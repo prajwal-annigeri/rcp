@@ -139,7 +139,7 @@ echo "Running servers..."
 PUBLIC_IPS=($(jq -r '.public_ips.value[]' ./../instance_ips.json))
 
 for i in "${!PUBLIC_IPS[@]}"; do
-  id="$((i + 1))"
+  id=$(printf "\\$(printf '%03o' $((65 + i)))")
   ip="${PUBLIC_IPS[$i]}"
 
   echo "Starting $APP_EXEC on $ip with ID $id..."
@@ -231,7 +231,7 @@ if [ "$LOGGING" = "true" ]; then
   echo "Downloading logs from servers..."
 
   for i in "${!PUBLIC_IPS[@]}"; do
-    id="S$((i + 1))"
+    id=$(printf "\\$(printf '%03o' $((65 + i)))")
     ip="${PUBLIC_IPS[$i]}"
 
     scp -i "$KEY" -o StrictHostKeyChecking=no $USER@$ip:~/out.txt "./../output/logs_$id.txt"
