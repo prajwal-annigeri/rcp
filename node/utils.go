@@ -48,8 +48,12 @@ func (node *Node) establishConns() error {
 				return err
 			}
 			client := rcppb.NewRCPClient(conn)
+
+			node.mutex.Lock()
 			node.ClientMap[id] = client
 			node.ConnMap[id] = conn
+			node.mutex.Unlock()
+
 			go node.checkHealth(id)
 		}
 	}
@@ -57,7 +61,10 @@ func (node *Node) establishConns() error {
 }
 
 func (node *Node) checkHealth(nodeID string) {
+	node.mutex.Lock()
 	grpcClient, ok := node.ClientMap[nodeID]
+	node.mutex.Unlock()
+
 	if !ok {
 		log.Printf("BUG() checkHealth() gRPCClient should have been in map")
 		return
