@@ -45,6 +45,8 @@ type Node struct {
 	ConnMap        map[string]*grpc.ClientConn
 	ClientMap      map[string]rcppb.RCPClient
 
+	inFlightMessageCount map[string]int
+
 	N                 int
 	K                 int
 	replicationQuorum int
@@ -200,17 +202,18 @@ func NewNode(
 		execIndex:   -1,
 		// lastIndex:             -1,
 		// lastTerm:              -1,
-		nextIndex:          make(map[string]int64),
-		matchIndex:         make(map[string]int64),
-		NodeAddressMap:     make(map[string]string),
-		ConnMap:            make(map[string]*grpc.ClientConn),
-		Live:               true,
-		ClientMap:          make(map[string]rcppb.RCPClient),
-		electionTimer:      time.NewTimer(20 * time.Minute),
-		logBufferChan:      make(chan LogWithCallbackChannel, 10000),
-		pendingFailureSet:  make(map[string]struct{}),
-		pendingRecoverySet: make(map[string]struct{}),
-		failedSet:          make(map[string]struct{}),
+		nextIndex:            make(map[string]int64),
+		matchIndex:           make(map[string]int64),
+		NodeAddressMap:       make(map[string]string),
+		ConnMap:              make(map[string]*grpc.ClientConn),
+		Live:                 true,
+		ClientMap:            make(map[string]rcppb.RCPClient),
+		electionTimer:        time.NewTimer(20 * time.Minute),
+		logBufferChan:        make(chan LogWithCallbackChannel, 10000),
+		inFlightMessageCount: make(map[string]int),
+		pendingFailureSet:    make(map[string]struct{}),
+		pendingRecoverySet:   make(map[string]struct{}),
+		failedSet:            make(map[string]struct{}),
 		// failureLogWaitingSet:  make(map[string]struct{}),
 		// recoveryLogWaitingSet: make(map[string]struct{}),
 		// reachableNodes:        make(map[string]struct{}),
@@ -257,6 +260,7 @@ func NewNode(
 			newNode.Port = node.Port
 		}
 		newNode.NodeAddressMap[node.Id] = fmt.Sprintf("%s:%s", node.IP, node.Port)
+		newNode.inFlightMessageCount[node.Id] = 0
 		// newNode.serverStatusMap.Store(node.Id, true)
 		// newNode.reachableNodes[node.Id] = struct{}{}
 		// newNode.failedAppendEntries.Store(thisNodeId, 0)
@@ -524,8 +528,10 @@ func (node *Node) requestVotes() {
 	// create channel to collect votes
 	votesCh := make(chan vote, len(node.ClientMap))
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	for nodeId, client := range node.ClientMap {
-		go node.sendRequestVote(client, node.currentTerm, votesCh, nodeId)
+		go node.sendRequestVote(client, ctx, node.currentTerm, votesCh, nodeId)
 	}
 
 	timeout := time.After(node.ElectionTimeoutMax)
@@ -539,7 +545,7 @@ func (node *Node) requestVotes() {
 				node.currentTerm = vote.term
 				node.StepDownLocked()
 				node.mutex.Unlock()
-				close(votesCh)
+				cancel()
 				return
 			}
 
@@ -563,7 +569,7 @@ func (node *Node) requestVotes() {
 			node.mutex.Unlock()
 		case <-timeout:
 			log.Println("Election timeout")
-			close(votesCh)
+			cancel()
 			return
 		}
 	}
@@ -573,6 +579,7 @@ func (node *Node) requestVotes() {
 		node.BecomeLeaderLocked()
 	}
 	node.mutex.Unlock()
+	cancel()
 }
 
 // func (node *Node) initNextIndex() {
@@ -581,7 +588,7 @@ func (node *Node) requestVotes() {
 // 	}
 // }
 
-func (node *Node) sendRequestVote(client rcppb.RCPClient, term int64, votesChan chan vote, nodeId string) {
+func (node *Node) sendRequestVote(client rcppb.RCPClient, ctx context.Context, term int64, votesChan chan vote, nodeId string) {
 	log.Printf("Sending RequestVote to %s\n", nodeId)
 
 	// delayRaw, ok := node.delays.Load(nodeId)
@@ -617,7 +624,8 @@ func (node *Node) sendRequestVote(client rcppb.RCPClient, term int64, votesChan 
 	}
 
 	select {
+	case <-ctx.Done():
+		return
 	case votesChan <- voteReply:
-	default:
 	}
 }

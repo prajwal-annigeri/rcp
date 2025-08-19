@@ -104,7 +104,7 @@ func (node *Node) startHeartbeatLoop(nodeId string) {
 			success, err := node.sendHeartbeatTo(nodeId, backingOff)
 
 			if err != nil {
-				if errors.Is(err, ErrNotLeader) || errors.Is(err, ErrNotAlive) {
+				if errors.Is(err, ErrNotLeader) || errors.Is(err, ErrNotAlive) || errors.Is(err, ErrTooManyInFlightMessages) {
 					continue
 				}
 
@@ -166,6 +166,12 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) 
 		return false, ErrNotAlive
 	}
 
+	if node.inFlightMessageCount[nodeId] >= constants.MaxInFlightMessageCount {
+		log.Printf("Too many in flight messages for %s: %d", nodeId, node.inFlightMessageCount[nodeId])
+		node.mutex.Unlock()
+		return false, ErrTooManyInFlightMessages
+	}
+
 	begin := time.Now()
 
 	// Build AppendEntries
@@ -198,17 +204,19 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) 
 		// Delay:        int64(delay),
 	}
 
+	node.inFlightMessageCount[nodeId] += 1
 	node.mutex.Unlock()
 
 	// Send AppendEntries
 	if len(req.Entries) > 0 {
-		log.Printf("Sending AppendEntries to %s with %d entries starting from index %d", nodeId, len(req.Entries), nextIndex)
+		log.Printf("Sending AppendEntries to %s with %d entries from index %d", nodeId, len(req.Entries), nextIndex)
 	}
 
 	client := node.ClientMap[nodeId]
 	resp, err := client.AppendEntries(context.Background(), req)
 
 	node.mutex.Lock()
+	node.inFlightMessageCount[nodeId] -= 1
 
 	if err != nil {
 		node.mutex.Unlock()

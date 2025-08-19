@@ -4,7 +4,8 @@ const (
 	// HeartbeatInterval = 100 * time.Second
 	DefaultBucket = "store"
 
-	FailureRetryCount = 3
+	FailureRetryCount       = 3
+	MaxInFlightMessageCount = 100
 )
 
 var (

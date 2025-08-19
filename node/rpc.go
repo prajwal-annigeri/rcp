@@ -7,7 +7,6 @@ import (
 	"log"
 	"rcp/constants"
 	"rcp/rcppb"
-	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -29,7 +28,7 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 	node.mutex.Lock()
 	defer node.mutex.Unlock()
 
-	begin := time.Now()
+	// begin := time.Now()
 
 	if appendEntryReq.Term < node.currentTerm {
 		log.Printf("Denying append because my term %d is > %d\n", node.currentTerm, appendEntryReq.Term)
@@ -85,9 +84,9 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 		}
 	}
 
-	if len(appendEntryReq.Entries) > 0 {
-		log.Printf("Time for appendEntries with %d entries: %v", len(appendEntryReq.Entries), time.Since(begin))
-	}
+	// if len(appendEntryReq.Entries) > 0 {
+	// 	log.Printf("Time for appendEntries with %d entries: %v", len(appendEntryReq.Entries), time.Since(begin))
+	// }
 
 	return &rcppb.AppendEntriesResponse{
 		Term:    node.currentTerm,
@@ -178,7 +177,6 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 		node.currentTerm = requestVoteReq.Term
 		node.StepDownLocked()
 		node.votedFor = ""
-		node.resetElectionTimer()
 	}
 
 	// Check if already voted
@@ -284,7 +282,7 @@ func (node *Node) Store(ctx context.Context, req *rcppb.StoreRequest) (*rcppb.Cl
 	data, err := node.HandleStore(req.Key, req.Bucket, req.Value)
 
 	if err != nil {
-		log.Printf("Store failed: %v", err)
+		// log.Printf("Store failed: %v", err)
 
 		if errors.Is(err, ErrNotLeader) {
 			return &rcppb.ClientResponse{
