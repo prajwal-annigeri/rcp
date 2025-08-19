@@ -566,7 +566,6 @@ func (node *Node) requestVotes() {
 			close(votesCh)
 			return
 		}
-
 	}
 
 	node.mutex.Lock()
@@ -601,19 +600,24 @@ func (node *Node) sendRequestVote(client rcppb.RCPClient, term int64, votesChan 
 	})
 
 	log.Printf("Resp from %s: %v", nodeId, resp)
+	var voteReply vote
 
 	if err != nil {
-		votesChan <- vote{
+		voteReply = vote{
 			nodeId:  nodeId,
 			term:    -1,
 			granted: false,
 		}
-		return
+	} else {
+		voteReply = vote{
+			nodeId:  nodeId,
+			term:    resp.Term,
+			granted: resp.VoteGranted,
+		}
 	}
 
-	votesChan <- vote{
-		nodeId:  nodeId,
-		term:    resp.Term,
-		granted: resp.VoteGranted,
+	select {
+	case votesChan <- voteReply:
+	default:
 	}
 }
