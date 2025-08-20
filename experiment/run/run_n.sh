@@ -1,9 +1,7 @@
 #!/bin/bash
 
-# failures=("None" "RF" "LF")
-failures=("None")
-# protocols=("rcp" "raft" "fraft")
-protocols=("raft")
+failures=("None" "RF" "LF")
+protocols=("rcp" "raft" "fraft")
 
 K=2
 

@@ -161,10 +161,19 @@ def plot_batch(data, duration, output_file_throughput="", output_file_latency=""
     plt.show()
 
 def plot_failure(data, failure, duration, tick=0, label_keys=["protocol"], output_file="", title="", smoothing=False):
+    LINE_STYLE_MAP = {
+        "rcp": '-',
+        "fraft": '--',
+        "raft": ':',
+    }
+
     plt.figure()
     
     for datum in data:
         if datum["fail"] != failure:
+            continue
+
+        if datum["N"] != "11":
             continue
 
         y = datum["throughput"][-duration:]
@@ -177,7 +186,7 @@ def plot_failure(data, failure, duration, tick=0, label_keys=["protocol"], outpu
             label += label_key + "=" + datum[label_key] + " "
         label = label.strip()
 
-        plt.plot(list(range(1, duration+1)), y, label=label)
+        plt.plot(list(range(1, duration+1)), y, linestyle=LINE_STYLE_MAP[datum["protocol"]], label=label)
 
     if tick != 0:
         plt.xticks(list(range(tick, duration, tick)))
@@ -279,3 +288,14 @@ if __name__ == "__main__":
     plot_failure(N_data, "None", EXPERIMENT_TIME_N, tick=5, label_keys=["protocol", "N"], title="None", smoothing=SMOOTH_DATA)
     plot_failure(N_data, "RF", EXPERIMENT_TIME_N, tick=5, label_keys=["protocol", "N"], title="RF", smoothing=SMOOTH_DATA)
     plot_failure(N_data, "LF", EXPERIMENT_TIME_N, tick=5, label_keys=["protocol", "N"], title="LF", smoothing=SMOOTH_DATA)
+
+    # ==================================================
+    # Plot NG K
+    # ==================================================
+
+    # N_folder = "output/K"
+    # N_data = read_output_folder(N_folder)
+
+    # plot_failure(N_data, "None", EXPERIMENT_TIME_K, tick=5, label_keys=["protocol", "K"], title="None", smoothing=SMOOTH_DATA)
+    # plot_failure(N_data, "RF", EXPERIMENT_TIME_K, tick=5, label_keys=["protocol", "K"], title="RF", smoothing=SMOOTH_DATA)
+    # plot_failure(N_data, "LF", EXPERIMENT_TIME_K, tick=5, label_keys=["protocol", "K"], title="LF", smoothing=SMOOTH_DATA)
