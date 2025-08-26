@@ -1,6 +1,6 @@
 #!/bin/bash
 
-failures=("None" "RF" "LF")
+failures=("None")
 protocols=("rcp" "raft" "fraft")
 
 K=2
@@ -16,7 +16,7 @@ CLIENT=512
 
 FAILURE_T=5
 OSCILLATING_FAILURE_T=1
-RUN_T=110
+RUN_T=60
 
 for protocol in "${protocols[@]}"; do
     echo "Running for protocol=$protocol. Waiting for 5 seconds in case of early termination is wanted..."

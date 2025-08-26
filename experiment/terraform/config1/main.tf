@@ -8,6 +8,7 @@ module "instance_1" {
   providers = { aws = aws.region_1 }
   key_name = module.security_region_1.key_name
   security_group_id = module.security_region_1.security_group_id
+  availability_zone = "us-east-1d"
 
   depends_on = [module.security_region_1]
 }
@@ -17,6 +18,7 @@ module "instance_2" {
   providers = { aws = aws.region_1 }
   key_name = module.security_region_1.key_name
   security_group_id = module.security_region_1.security_group_id
+  availability_zone = "us-east-1d"
 
   depends_on = [module.security_region_1]
 }
@@ -26,6 +28,7 @@ module "instance_3" {
   providers = { aws = aws.region_1 }
   key_name = module.security_region_1.key_name
   security_group_id = module.security_region_1.security_group_id
+  availability_zone = "us-east-1d"
 
   depends_on = [module.security_region_1]
 }
@@ -35,6 +38,7 @@ module "instance_4" {
   providers = { aws = aws.region_1 }
   key_name = module.security_region_1.key_name
   security_group_id = module.security_region_1.security_group_id
+  availability_zone = "us-east-1d"
 
   depends_on = [module.security_region_1]
 }
@@ -44,6 +48,7 @@ module "instance_5" {
   providers = { aws = aws.region_1 }
   key_name = module.security_region_1.key_name
   security_group_id = module.security_region_1.security_group_id
+  availability_zone = "us-east-1d"
 
   depends_on = [module.security_region_1]
 }
@@ -53,6 +58,7 @@ module "instance_6" {
   providers = { aws = aws.region_1 }
   key_name = module.security_region_1.key_name
   security_group_id = module.security_region_1.security_group_id
+  availability_zone = "us-east-1d"
 
   depends_on = [module.security_region_1]
 }
@@ -62,6 +68,7 @@ module "instance_7" {
   providers = { aws = aws.region_1 }
   key_name = module.security_region_1.key_name
   security_group_id = module.security_region_1.security_group_id
+  availability_zone = "us-east-1d"
 
   depends_on = [module.security_region_1]
 }
@@ -71,6 +78,7 @@ module "instance_client" {
   providers = { aws = aws.region_1 }
   key_name = module.security_region_1.key_name
   security_group_id = module.security_region_1.security_group_id
+  availability_zone = "us-east-1d"
 
   depends_on = [module.security_region_1]
 }
