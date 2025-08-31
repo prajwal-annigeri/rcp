@@ -120,6 +120,7 @@ func (node *Node) startHeartbeatLoop(nodeId string) {
 						if retryCount > constants.FailureRetryCount {
 							if _, failed := node.failedSet[nodeId]; !failed {
 								if _, pendingFailure := node.pendingFailureSet[nodeId]; !pendingFailure {
+									log.Printf("Failure detected on %s", nodeId)
 									// If node is not failed nor pending failure, failure detected
 									failureLog := &rcppb.LogEntry{
 										LogType: rcppb.LogType_FAILURE,
@@ -252,13 +253,14 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) 
 			commitIndex := node.commitIndex
 			nodeRequired := node.replicationQuorum - 1
 
-			// TODO: Handle if pending failure node recovers, optional
+			// TODO: OPTIONAL: Handle if pending failure node recovers
 			for _, nodeIdMatchIndexPair := range sortedMatchIndex {
+				// Don't count replication if node is failed or pending recovery
 				if _, failed := node.failedSet[nodeIdMatchIndexPair.Key]; failed {
 					continue
 				}
 
-				if _, pendingFailure := node.failedSet[nodeIdMatchIndexPair.Key]; pendingFailure {
+				if _, pendingRecovery := node.pendingRecoverySet[nodeIdMatchIndexPair.Key]; pendingRecovery {
 					continue
 				}
 

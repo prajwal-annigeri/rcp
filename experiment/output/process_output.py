@@ -201,7 +201,7 @@ def plot_failure(data, failure, tick=0, output_file="", title="", smoothing=Fals
         label = datum["protocol"]
         if color_K:
             label += f"(K={datum['K']})"
-        label += ": " + str(sum(y))
+        label += ": " + str(int(sum(y))) + " trxs"
 
         if color_K:
             plt.plot(list(range(1, len(y) + 1)), y,
@@ -273,6 +273,8 @@ def plot_N(data, failure, output_file="", title=""):
 if __name__ == "__main__":
     FIELDS = ["Takes(s)", "Count", "OPS", "Avg(us)", "Min(us)", "Max(us)", "50th(us)", "90th(us)", "95th(us)", "99th(us)", "99.9th(us)", "99.99th(us)"]
 
+    SMOOTH_DATA = False
+
     EXPERIMENT_TIME_BATCH = 30
     EXPERIMENT_TIME_NG = 30
     EXPERIMENT_TIME_G1 = 60
@@ -284,150 +286,97 @@ if __name__ == "__main__":
     # Plot batch
     # ==================================================
 
-    # NG_batch_data = read_output_folders([
-    #     "output/batch_NG/run1",
-    #     "output/batch_NG/run2",
-    #     "output/batch_NG/run3",
-    #     ], EXPERIMENT_TIME_BATCH)
+    NG_batch_data = read_output_folders([
+        "output/batch_NG/run1",
+        "output/batch_NG/run2",
+        "output/batch_NG/run3",
+        ], EXPERIMENT_TIME_BATCH)
     
-    # plot_batch(NG_batch_data, output_file_throughput="output/plots/batch_ng_throughput", output_file_latency="output/plots/batch_ng_latency")
-    # plot_batch(NG_batch_data, output_file_throughput="output/plots/batch_ng_throughput_log", output_file_latency="output/plots/batch_ng_latency_log", log=True)
+    plot_batch(NG_batch_data, output_file_throughput="output/plots/batch_ng_throughput", output_file_latency="output/plots/batch_ng_latency")
+    plot_batch(NG_batch_data, output_file_throughput="output/plots/batch_ng_throughput_log", output_file_latency="output/plots/batch_ng_latency_log", log=True)
 
-    # G1_batch_data = read_output_folders([
-    #     "output/batch_G1/run1",
-    #     "output/batch_G1/run2",
-    #     "output/batch_G1/run3",
-    #     ], EXPERIMENT_TIME_BATCH)
+    G1_batch_data = read_output_folders([
+        "output/batch_G1/run1",
+        "output/batch_G1/run2",
+        "output/batch_G1/run3",
+        ], EXPERIMENT_TIME_BATCH)
     
-    # plot_batch(G1_batch_data, output_file_throughput="output/plots/batch_g1_throughput", output_file_latency="output/plots/batch_g1_latency")
-    # plot_batch(G1_batch_data, output_file_throughput="output/plots/batch_g1_throughput_log", output_file_latency="output/plots/batch_g1_latency_log", log=True)
+    plot_batch(G1_batch_data, output_file_throughput="output/plots/batch_g1_throughput", output_file_latency="output/plots/batch_g1_latency")
+    plot_batch(G1_batch_data, output_file_throughput="output/plots/batch_g1_throughput_log", output_file_latency="output/plots/batch_g1_latency_log", log=True)
 
-    # G2_batch_data = read_output_folders([
-    #     "output/batch_G2/run1",
-    #     "output/batch_G2/run2",
-    #     "output/batch_G2/run3",
-    #     ], EXPERIMENT_TIME_BATCH)
+    G2_batch_data = read_output_folders([
+        "output/batch_G2/run1",
+        "output/batch_G2/run2",
+        "output/batch_G2/run3",
+        ], EXPERIMENT_TIME_BATCH)
     
-    # plot_batch(G2_batch_data, output_file_throughput="output/plots/batch_g2_throughput", output_file_latency="output/plots/batch_g2_latency")
-    # plot_batch(G2_batch_data, output_file_throughput="output/plots/batch_g2_throughput_log", output_file_latency="output/plots/batch_g2_latency_log", log=True)
+    plot_batch(G2_batch_data, output_file_throughput="output/plots/batch_g2_throughput", output_file_latency="output/plots/batch_g2_latency")
+    plot_batch(G2_batch_data, output_file_throughput="output/plots/batch_g2_throughput_log", output_file_latency="output/plots/batch_g2_latency_log", log=True)
 
     # ==================================================
     # Plot NG Failures
     # ==================================================
 
-    # NG_failure_data = read_output_folders([
-    #     "output/failure_NG/run1",
-    #     "output/failure_NG/run2",
-    #     "output/failure_NG/run3",
-    #     ], EXPERIMENT_TIME_NG)
+    NG_failure_data = read_output_folders([
+        "output/failure_NG/run1",
+        "output/failure_NG/run2",
+        "output/failure_NG/run3",
+        ], EXPERIMENT_TIME_NG)
 
-    # plot_failure(NG_failure_data, "None", title="NG None", smoothing=False)
-    # plot_failure(NG_failure_data, "RF", title="NG RF", smoothing=False)
-    # plot_failure(NG_failure_data, "LF", title="NG LF", smoothing=False)
-    # plot_failure(NG_failure_data, "ROF", title="NG ROF", smoothing=False)
-    # plot_failure(NG_failure_data, "LOF", title="NG LOF", smoothing=False)
-
-    # plot_failure(NG_failure_data, "None", title="NG None Smooth", smoothing=True)
-    # plot_failure(NG_failure_data, "RF", title="NG RF Smooth", smoothing=True)
-    # plot_failure(NG_failure_data, "LF", title="NG LF Smooth", smoothing=True)
-    # plot_failure(NG_failure_data, "ROF", title="NG ROF Smooth", smoothing=True)
-    # plot_failure(NG_failure_data, "LOF", title="NG LOF Smooth", smoothing=True)
+    plot_failure(NG_failure_data, "None", title="NG None", output_file="output/plots/failure_ng_none", smoothing=SMOOTH_DATA)
+    plot_failure(NG_failure_data, "RF", title="NG RF", output_file="output/plots/failure_ng_rf", smoothing=SMOOTH_DATA)
+    plot_failure(NG_failure_data, "LF", title="NG LF", output_file="output/plots/failure_ng_lf", smoothing=SMOOTH_DATA)
+    plot_failure(NG_failure_data, "ROF", title="NG ROF", output_file="output/plots/failure_ng_rof", smoothing=SMOOTH_DATA)
+    plot_failure(NG_failure_data, "LOF", title="NG LOF", output_file="output/plots/failure_ng_lof", smoothing=SMOOTH_DATA)
 
     # ==================================================
     # Plot G1 Failures
     # ==================================================
 
-    # G1_failure_data = read_output_folders([
-    #     "output/failure_G1/run1",
-    #     "output/failure_G1/run2",
-    #     "output/failure_G1/run3",
-    #     ], EXPERIMENT_TIME_G1)
+    G1_failure_data = read_output_folders([
+        "output/failure_G1/run1",
+        "output/failure_G1/run2",
+        "output/failure_G1/run3",
+        ], EXPERIMENT_TIME_G1)
 
-    # plot_failure(G1_failure_data, "None", title="G1 None", smoothing=False)
-    # plot_failure(G1_failure_data, "LF", title="G1 LF", smoothing=False)
-
-    # plot_failure(G1_failure_data, "None", title="G1 None Smooth", smoothing=True)
-    # plot_failure(G1_failure_data, "LF", title="G1 LF Smooth", smoothing=True)
+    plot_failure(G1_failure_data, "None", title="G1 None", output_file="output/plots/failure_g1_none", smoothing=SMOOTH_DATA)
+    plot_failure(G1_failure_data, "LF", title="G1 LF", output_file="output/plots/failure_g1_lf", smoothing=SMOOTH_DATA)
 
     # ==================================================
     # Plot G2 Failures
     # ==================================================
 
-    # G2_failure_data = read_output_folders([
-    #     "output/failure_G2/run1",
-    #     # "output/failure_G2/run2",
-    #     # "output/failure_G2/run3",
-    #     ], EXPERIMENT_TIME_G2)
+    G2_failure_data = read_output_folders([
+        "output/failure_G2/run1",
+        "output/failure_G2/run2",
+        "output/failure_G2/run3",
+        ], EXPERIMENT_TIME_G2)
 
-    # plot_failure(G2_failure_data, "None", title="G2 None", smoothing=False)
-    # plot_failure(G2_failure_data, "LF", title="G2 LF", smoothing=False)
-    # # plot_failure(G2_failure_data, "RF", title="G2 RF", smoothing=False)
-
-    # # plot_failure(G2_failure_data, "None", title="G2 None Smooth", smoothing=True)
-    # # plot_failure(G2_failure_data, "LF", title="G2 LF Smooth", smoothing=True)
-
-    # G2_failure_data = read_output_folders([
-    #     "output/failure_G2/run2",
-    #     ], EXPERIMENT_TIME_G2)
-
-    # plot_failure(G2_failure_data, "None", title="G2 None 2", smoothing=False)
-    # plot_failure(G2_failure_data, "LF", title="G2 LF 2", smoothing=False)
-    # # plot_failure(G2_failure_data, "RF", title="G2 RF 2", smoothing=False)
-
-    # G2_failure_data = read_output_folders([
-    #     "output/failure_G2/run3",
-    #     ], EXPERIMENT_TIME_G2)
-
-    # plot_failure(G2_failure_data, "None", title="G2 None 3", smoothing=False)
-    # plot_failure(G2_failure_data, "LF", title="G2 LF 3", smoothing=False)
-    # # plot_failure(G2_failure_data, "RF", title="G2 RF 3", smoothing=False)
-
-    # G2_failure_data = read_output_folders([
-    #     "output/failure_G2/run4",
-    #     ], EXPERIMENT_TIME_G2)
-
-    # plot_failure(G2_failure_data, "None", title="G2 None 4", smoothing=False)
-    # plot_failure(G2_failure_data, "LF", title="G2 LF 4", smoothing=False)
-    # # plot_failure(G2_failure_data, "RF", title="G2 RF 4", smoothing=False)
+    plot_failure(G2_failure_data, "None", title="G2 None", output_file="output/plots/failure_g2_none", smoothing=SMOOTH_DATA)
+    plot_failure(G2_failure_data, "LF", title="G2 LF", output_file="output/plots/failure_g2_lf", smoothing=SMOOTH_DATA)
 
     # ==================================================
     # Plot NG N
     # ==================================================
 
-    # N_data = read_output_folders([
-    #     "output/N/run1",
-    #     "output/N/run2",
-    #     "output/N/run3",
-    #     ], EXPERIMENT_TIME_N)
+    N_data = read_output_folders([
+        "output/N/run1",
+        "output/N/run2",
+        "output/N/run3",
+        ], EXPERIMENT_TIME_N)
 
-    # plot_N(N_data, "None", title="N")
-
-    # N_data = read_output_folders([
-    #     "output/N/run2",
-    #     ], EXPERIMENT_TIME_N)
-
-    # plot_N(N_data, "None", title="N")
-
-    # N_data = read_output_folders([
-    #     "output/N/run3",
-    #     ], EXPERIMENT_TIME_N)
-
-    # plot_N(N_data, "None", title="N")
+    plot_N(N_data, "None", title="N", output_file="output/plots/n_no_failure")
 
     # ==================================================
     # Plot NG K
     # ==================================================
 
-    # K_data = read_output_folders([
-    #     "output/K/run1",
-    #     "output/K/run2",
-    #     "output/K/run3",
-    #     ], EXPERIMENT_TIME_K)
+    K_data = read_output_folders([
+        "output/K/run1",
+        "output/K/run2",
+        "output/K/run3",
+        ], EXPERIMENT_TIME_K)
 
-    # plot_failure(K_data, "None", tick=5, smoothing=False, color_K=True, output_file="output/plots/k_no_failure")
-    # plot_failure(K_data, "RF", tick=5, smoothing=False, color_K=True, output_file="output/plots/k_replica_failure")
-    # plot_failure(K_data, "LF", tick=5, smoothing=False, color_K=True, output_file="output/plots/k_leader_failure")
-
-    # plot_failure(K_data, "None", tick=5, label_keys=["protocol", "K"], smoothing=True, color_K=True)
-    # plot_failure(K_data, "RF", tick=5, label_keys=["protocol", "K"], smoothing=True, color_K=True)
-    # plot_failure(K_data, "LF", tick=5, label_keys=["protocol", "K"], smoothing=True, color_K=True)
+    plot_failure(K_data, "None", tick=5, smoothing=SMOOTH_DATA, color_K=True, output_file="output/plots/k_no_failure")
+    plot_failure(K_data, "RF", tick=5, smoothing=SMOOTH_DATA, color_K=True, output_file="output/plots/k_replica_failure")
+    plot_failure(K_data, "LF", tick=5, smoothing=SMOOTH_DATA, color_K=True, output_file="output/plots/k_leader_failure")

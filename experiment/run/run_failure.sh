@@ -2,7 +2,8 @@
 
 # failures=("None" "RF" "LF" "LOF" "ROF")
 failures=("None" "LF")
-protocols=("rcp" "raft" "fraft")
+# protocols=("rcp" "raft" "fraft")
+protocols=("rcp" "raft")
 
 K=2
 
