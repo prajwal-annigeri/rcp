@@ -3,12 +3,18 @@ module "security_region_1" {
   providers = { aws = aws.region_1 }
 }
 
+resource "aws_placement_group" "region_1" {
+  name     = "research"
+  strategy = "cluster"
+}
+
 module "instance_1" {
   source    = "./../modules/instance"
   providers = { aws = aws.region_1 }
   key_name = module.security_region_1.key_name
   security_group_id = module.security_region_1.security_group_id
   availability_zone = "us-east-1d"
+  placement_group   = aws_placement_group.region_1.name
 
   depends_on = [module.security_region_1]
 }
@@ -19,6 +25,7 @@ module "instance_2" {
   key_name = module.security_region_1.key_name
   security_group_id = module.security_region_1.security_group_id
   availability_zone = "us-east-1d"
+  placement_group   = aws_placement_group.region_1.name
 
   depends_on = [module.security_region_1]
 }
@@ -29,6 +36,7 @@ module "instance_3" {
   key_name = module.security_region_1.key_name
   security_group_id = module.security_region_1.security_group_id
   availability_zone = "us-east-1d"
+  placement_group   = aws_placement_group.region_1.name
 
   depends_on = [module.security_region_1]
 }
@@ -39,6 +47,7 @@ module "instance_4" {
   key_name = module.security_region_1.key_name
   security_group_id = module.security_region_1.security_group_id
   availability_zone = "us-east-1d"
+  placement_group   = aws_placement_group.region_1.name
 
   depends_on = [module.security_region_1]
 }
@@ -49,6 +58,7 @@ module "instance_5" {
   key_name = module.security_region_1.key_name
   security_group_id = module.security_region_1.security_group_id
   availability_zone = "us-east-1d"
+  placement_group   = aws_placement_group.region_1.name
 
   depends_on = [module.security_region_1]
 }
@@ -59,6 +69,7 @@ module "instance_6" {
   key_name = module.security_region_1.key_name
   security_group_id = module.security_region_1.security_group_id
   availability_zone = "us-east-1d"
+  placement_group   = aws_placement_group.region_1.name
 
   depends_on = [module.security_region_1]
 }
@@ -69,6 +80,7 @@ module "instance_7" {
   key_name = module.security_region_1.key_name
   security_group_id = module.security_region_1.security_group_id
   availability_zone = "us-east-1d"
+  placement_group   = aws_placement_group.region_1.name
 
   depends_on = [module.security_region_1]
 }
@@ -79,6 +91,7 @@ module "instance_client" {
   key_name = module.security_region_1.key_name
   security_group_id = module.security_region_1.security_group_id
   availability_zone = "us-east-1d"
+  placement_group   = aws_placement_group.region_1.name
 
   depends_on = [module.security_region_1]
 }

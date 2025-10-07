@@ -11,6 +11,11 @@ variable "availability_zone" {
   default = ""  # Leave empty to skip
 }
 
+variable "placement_group" {
+  type    = string
+  default = null
+}
+
 data "aws_ami" "amazon_linux" {
   most_recent = true
   owners      = ["amazon"]
@@ -46,6 +51,7 @@ resource "aws_instance" "instance" {
   key_name               = var.key_name
   vpc_security_group_ids = [var.security_group_id]
   subnet_id              = var.availability_zone != "" ? data.aws_subnet.default_for_az[0].id : null
+  placement_group        = var.placement_group
 
   tags = {
     Name = "ec2-research"
