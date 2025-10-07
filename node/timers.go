@@ -210,11 +210,15 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) 
 
 	// Send AppendEntries
 	if len(req.Entries) > 0 {
-		log.Printf("Sending AppendEntries to %s with %d entries from index %d", nodeId, len(req.Entries), nextIndex)
+		log.Printf("Sending AppendEntries to %s with %d entries from index %d after %v", nodeId, len(req.Entries), nextIndex, time.Since(begin))
 	}
 
 	client := node.ClientMap[nodeId]
 	resp, err := client.AppendEntries(context.Background(), req)
+
+	if len(req.Entries) > 0 {
+		log.Printf("Received AppendEntries ack from %s after %v", nodeId, time.Since(begin))
+	}
 
 	node.mutex.Lock()
 	node.inFlightMessageCount[nodeId] -= 1
@@ -223,11 +227,6 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) 
 		node.mutex.Unlock()
 		return false, err
 	}
-
-	// if len(req.Entries) > 0 {
-	// 	log.Printf("Received append entries response from %s: %v", nodeId, resp)
-	// }
-	// log.Printf("Received AppendEntries response from %s after %v", nodeId, time.Since(begin))
 
 	if node.protocol == "rcp" {
 		// If node failed, move it to pending recovery if not yet there already
