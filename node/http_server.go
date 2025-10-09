@@ -1,16 +1,12 @@
 package node
 
 import (
-	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"rcp/constants"
-	"rcp/rcppb"
-	"time"
-
-	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 type StoreResponse struct {
@@ -29,23 +25,20 @@ type DeleteResponse struct {
 }
 
 type ErrorResponse struct {
-	Error   string `json:"error"`
-	Success bool   `json:"success"`
+	Error string `json:"error"`
 }
 
 type CauseFailureResponse struct {
-	Success     bool   `json:"success"`
-	NodeKilled  string `json:"node_killed"`
-	NodeRevived string `json:"node_revived"`
+	Success bool `json:"success"`
 }
 
 func (node *Node) startHttpServer() {
 	log.Printf("Starting HTTP server on port %s", node.HttpPort)
 	http.HandleFunc("/put", node.putHandler)
 	http.HandleFunc("/get", node.getHandler)
-	http.HandleFunc("/delete", node.deleteHandler)
+	http.HandleFunc("/del", node.deleteHandler)
 	http.HandleFunc("/cause-failure", node.causeFailureHandler)
-	err := http.ListenAndServe(node.HttpPort, nil)
+	err := http.ListenAndServe(fmt.Sprintf(":%s", node.HttpPort), nil)
 	if err != nil {
 		log.Printf("Failed to start HTTP server: %v", err)
 	}
@@ -62,15 +55,14 @@ func (node *Node) putHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Got put at %v", time.Since(node.beginTime))
+	// log.Printf("Got put at %v", time.Since(node.beginTime))
 
 	key := r.URL.Query().Get("key")
 	value := r.URL.Query().Get("value")
 	bucket := r.URL.Query().Get("bucket")
 
-	// log.Printf("Got key %s, bucket: %s", key, bucket)
 	if key == "" || value == "" {
-		node.sendError(w, "'key' and 'value'required", http.StatusBadRequest)
+		node.sendError(w, "Missing 'key' or 'value'", http.StatusBadRequest)
 		return
 	}
 
@@ -78,17 +70,26 @@ func (node *Node) putHandler(w http.ResponseWriter, r *http.Request) {
 		bucket = constants.DefaultBucket
 	}
 
-	// log.Printf("Storing: Key=%s, Value=%s", key, value)
-	log.Printf("Storing: Key=%s, Bucket=%s", key, bucket)
+	data, err := node.HandleStore(key, bucket, value)
 
-	_, err := node.Store(context.Background(), &rcppb.StoreRequest{Key: key, Value: value, Bucket: bucket})
 	if err != nil {
 		log.Printf("Store failed: %v", err)
+
+		if errors.Is(err, ErrNotLeader) {
+			node.sendError(w, data, http.StatusTemporaryRedirect)
+			return
+		}
+
+		if errors.Is(err, ErrTimeOut) {
+			node.sendError(w, "Timeout waiting for consensus", http.StatusGatewayTimeout)
+			return
+		}
+
 		node.sendError(w, "Store operation failed", http.StatusInternalServerError)
 		return
 	}
 
-	node.sendJSON(w, StoreResponse{Success: true, Message: "Stored successfully"})
+	node.sendJSON(w, StoreResponse{Success: true})
 }
 
 func (node *Node) getHandler(w http.ResponseWriter, r *http.Request) {
@@ -104,6 +105,7 @@ func (node *Node) getHandler(w http.ResponseWriter, r *http.Request) {
 
 	key := r.URL.Query().Get("key")
 	bucket := r.URL.Query().Get("bucket")
+
 	if key == "" {
 		node.sendError(w, "Missing 'key'", http.StatusBadRequest)
 		return
@@ -113,14 +115,14 @@ func (node *Node) getHandler(w http.ResponseWriter, r *http.Request) {
 		bucket = constants.DefaultBucket
 	}
 
-	value, err := node.Get(context.Background(), &rcppb.GetValueReq{Key: key, Bucket: bucket})
+	value, err := node.HandleGet(key, bucket)
 	if err != nil {
-		log.Printf("Get failed: %v", err)
+		log.Printf("Get failed on key %s and bucket %s: %v", key, bucket, err)
 		node.sendJSON(w, GetKVResponse{Value: "", Found: false})
 		return
 	}
 
-	node.sendJSON(w, GetKVResponse{Value: value.Value, Found: true})
+	node.sendJSON(w, GetKVResponse{Value: value, Found: true})
 }
 
 func (node *Node) deleteHandler(w http.ResponseWriter, r *http.Request) {
@@ -136,6 +138,7 @@ func (node *Node) deleteHandler(w http.ResponseWriter, r *http.Request) {
 
 	key := r.URL.Query().Get("key")
 	bucket := r.URL.Query().Get("bucket")
+
 	if key == "" {
 		node.sendError(w, "Missing 'key'", http.StatusBadRequest)
 		return
@@ -145,14 +148,25 @@ func (node *Node) deleteHandler(w http.ResponseWriter, r *http.Request) {
 		bucket = constants.DefaultBucket
 	}
 
-	_, err := node.Delete(context.Background(), &rcppb.DeleteReq{Key: key, Bucket: bucket})
+	data, err := node.HandleDelete(key, bucket)
+
 	if err != nil {
+		if errors.Is(err, ErrNotLeader) {
+			node.sendError(w, data, http.StatusTemporaryRedirect)
+			return
+		}
+
+		if errors.Is(err, ErrTimeOut) {
+			node.sendError(w, "Timeout waiting for consensus", http.StatusGatewayTimeout)
+			return
+		}
+
 		log.Printf("Delete failed: %v", err)
 		node.sendError(w, "Delete operation failed", http.StatusInternalServerError)
 		return
 	}
 
-	node.sendJSON(w, DeleteResponse{Success: true, Message: "Deleted successfully"})
+	node.sendJSON(w, DeleteResponse{Success: true})
 }
 
 func (node *Node) sendJSON(w http.ResponseWriter, data interface{}) {
@@ -163,99 +177,95 @@ func (node *Node) sendJSON(w http.ResponseWriter, data interface{}) {
 func (node *Node) sendError(w http.ResponseWriter, message string, statusCode int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(ErrorResponse{Error: message, Success: false})
+	json.NewEncoder(w).Encode(ErrorResponse{Error: message})
 }
 
 func (node *Node) causeFailureHandler(w http.ResponseWriter, r *http.Request) {
 	failureType := r.URL.Query().Get("type")
 	log.Printf("Got cause-failure of type %s", failureType)
-	var nodeToKill string
+
+	node.mutex.Lock()
+	defer node.mutex.Unlock()
+
 	switch failureType {
 	case "revive":
-		node.maybeReviveDeadNode(w)
-		return
-	case "leader":
-		currentLeader, ok := node.votedFor.Load(node.currentTerm)
-		if !ok {
-			node.sendError(w, "BUG() no leader", http.StatusInternalServerError)
-			return
-		}
-		nodeToKill = currentLeader.(string)
-	case "non-leader":
-		currentLeader, ok := node.votedFor.Load(node.currentTerm)
-		if !ok {
-			node.sendError(w, "BUG() no leader", http.StatusInternalServerError)
-			return
+		if node.Live {
+			node.sendJSON(w, CauseFailureResponse{Success: false})
+		} else {
+			node.Live = true
+			node.sendJSON(w, CauseFailureResponse{Success: true})
 		}
 
-		for nodeID := range node.ClientMap {
-			if nodeID != currentLeader {
-				status, _ := node.serverStatusMap.Load(nodeID)
-				if status.(bool) {
-					nodeToKill = nodeID
-					break
-				}
+	case "leader":
+		if node.Live {
+			if node.isLeader {
+				node.Live = false
+				node.sendJSON(w, CauseFailureResponse{Success: true})
+			} else {
+				// Node is not the leader, redirect to the leader
+				node.sendError(w, node.votedFor, http.StatusTemporaryRedirect)
+			}
+		} else {
+			// Node is not alive, the node doesn't know the correct leader
+			node.sendJSON(w, CauseFailureResponse{Success: false})
+		}
+
+	case "non-leader":
+		if node.isLeader {
+			node.sendJSON(w, CauseFailureResponse{Success: false})
+		} else {
+			if node.Live {
+				node.Live = false
+				node.sendJSON(w, CauseFailureResponse{Success: true})
+			} else {
+				node.sendJSON(w, CauseFailureResponse{Success: false})
 			}
 		}
+
 	case "random":
-		for nodeID := range node.ClientMap {
-			status, _ := node.serverStatusMap.Load(nodeID)
-			if status.(bool) {
-				nodeToKill = nodeID
-				break
-			}
+		if node.Live {
+			node.Live = false
+			node.sendJSON(w, CauseFailureResponse{Success: true})
+		} else {
+			node.sendJSON(w, CauseFailureResponse{Success: false})
 		}
+
 	default:
 		node.sendError(w, "invalid failure type", http.StatusBadRequest)
 		return
 	}
-
-	if nodeToKill == node.Id {
-		_, err := node.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: false})
-		if err != nil {
-			node.sendError(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	} else {
-		RPCClient, ok := node.ClientMap[nodeToKill]
-		if !ok {
-			node.sendError(w, fmt.Sprintf("Invalid server or no gRPC client for '%s'", nodeToKill), http.StatusInternalServerError)
-			return
-		}
-		RPCClient.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: false})
-	}
-
-	node.sendJSON(w, CauseFailureResponse{Success: true, NodeKilled: nodeToKill})
 }
 
-func (node *Node) maybeReviveDeadNode(w http.ResponseWriter) {
-	nodeToRevive := ""
-	node.serverStatusMap.Range(func(nodeId any, isAlive any) bool {
-		if !isAlive.(bool) {
-			nodeToRevive = nodeId.(string)
-			return false
-		}
-		return true
-	})
+// func (node *Node) maybeReviveDeadNode(w http.ResponseWriter) {
+// 	nodeToRevive := ""
 
-	switch nodeToRevive {
-	case "":
-		node.sendError(w, "No dead nodes", http.StatusBadRequest)
-		return
-	case node.Id:
-		_, err := node.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: true})
-		if err != nil {
-			node.sendError(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	default:
-		RPCClient, ok := node.ClientMap[nodeToRevive]
-		if !ok {
-			node.sendError(w, fmt.Sprintf("Invalid server or no gRPC client for '%s'", nodeToRevive), http.StatusInternalServerError)
-			return
-		}
-		RPCClient.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: true})
-	}
+// 	for nodeId := range node.failedSet {
+// 		nodeToRevive = nodeId
+// 		break
+// 	}
 
-	node.sendJSON(w, CauseFailureResponse{Success: true, NodeRevived: nodeToRevive})
-}
+// 	if !node.Live {
+// 		nodeToRevive = node.Id
+// 	}
+
+// 	switch nodeToRevive {
+// 	case "":
+// 		node.sendError(w, "No dead nodes", http.StatusBadRequest)
+// 		return
+// 	case node.Id:
+// 		_, err := node.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: true})
+// 		if err != nil {
+// 			node.sendError(w, err.Error(), http.StatusInternalServerError)
+// 			return
+// 		}
+// 	default:
+// 		RPCClient, ok := node.ClientMap[nodeToRevive]
+// 		if !ok {
+// 			node.sendError(w, fmt.Sprintf("Invalid server or no gRPC client for '%s'", nodeToRevive), http.StatusInternalServerError)
+// 			return
+// 		}
+// 		RPCClient.SetStatus(context.Background(), &wrapperspb.BoolValue{Value: true})
+// 	}
+
+// 	node.sendJSON(w, CauseFailureResponse{Success: true, NodeRevived: nodeToRevive})
+// }

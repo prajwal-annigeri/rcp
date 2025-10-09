@@ -4,14 +4,21 @@ package rcppb;
 
 option go_package = "/rcppb";
 
+enum LogType {
+  STORE = 0;
+  DELETE = 1;
+  FAILURE = 2;
+  RECOVERY = 3;
+}
+
 message LogEntry {
-    string logType = 1;
+    LogType logType = 1;
     string nodeId = 2;
     string key = 3;
     string value = 4;
-    int64 term = 7;
-    string callbackChannelId = 8;
-    string bucket = 9;
+    string bucket = 5;
+    int64 term = 6;
+    // string callbackChannelId = 8;
 }
 
 message AppendEntriesReq {
@@ -21,7 +28,7 @@ message AppendEntriesReq {
     int64 prevLogTerm = 4;
     repeated LogEntry entries = 5;
     int64 leaderCommit = 6;
-    int64 delay = 7;
+    // int64 delay = 7;
 }
 
 message AppendEntriesResponse {
@@ -34,7 +41,7 @@ message RequestVoteReq {
     string candidateId = 2;
     int64 lastLogIndex = 3;
     int64 lastLogTerm = 4;
-    int64 delay = 5;
+    // int64 delay = 5;
 }
 
 message RequestVoteResponse {
@@ -48,45 +55,62 @@ message StoreRequest {
     string bucket = 3;
 }
 
-message GetValueReq {
+message GetRequest {
     string key = 1;
     string bucket = 2;
 }
 
-message DeleteReq {
+message DeleteRequest {
     string key = 1;
     string bucket = 2;
 }
 
-message GetValueResponse {
-    bool success = 1;
-    string value = 2;
+enum FailureType {
+    REVIVE = 0;
+    RANDOM = 1;
+    LEADER = 2;
+    REPLICA = 3;
 }
-
-message PartitionReq {
-    repeated string reachableNodes = 1;
-}
-
-message DelayRequest {
-    string nodeId = 1;
-    int64 delay = 2;
-}
-
-message HealthzRequest {}
 
 message CauseFailureRequest {
-    string type = 1;
+    FailureType type = 1;
 }
+
+enum ErrorType {
+    NOT_ALIVE = 0;
+    NOT_LEADER = 1;
+    NOT_FOUND = 2;
+    BAD_REQUEST = 3;
+    UNEXPECTED = 4;
+    TIMEOUT = 5;
+}
+
+message ClientResponse {
+    bool success = 1;
+    ErrorType error = 2;
+    string value = 3;
+}
+
+// message PartitionReq {
+//     repeated string reachableNodes = 1;
+// }
+
+// message DelayRequest {
+//     string nodeId = 1;
+//     int64 delay = 2;
+// }
+
+message HealthzRequest {}
 
 service RCP {
     rpc AppendEntries(AppendEntriesReq) returns (AppendEntriesResponse) {}
     rpc RequestVote (RequestVoteReq) returns (RequestVoteResponse) {}
-    rpc Store(StoreRequest) returns (google.protobuf.BoolValue) {}
-    rpc Delete(DeleteReq) returns (google.protobuf.BoolValue) {}
-    rpc Get(GetValueReq) returns (GetValueResponse) {}
-    rpc SetStatus(google.protobuf.BoolValue) returns (google.protobuf.BoolValue) {}
-    rpc Partition(PartitionReq) returns (google.protobuf.BoolValue) {}
-    rpc Delay(DelayRequest) returns (google.protobuf.BoolValue) {}
+    // rpc SetStatus(google.protobuf.BoolValue) returns (google.protobuf.BoolValue) {}
+    // rpc Partition(PartitionReq) returns (google.protobuf.BoolValue) {}
+    // rpc Delay(DelayRequest) returns (google.protobuf.BoolValue) {}
     rpc Healthz(HealthzRequest) returns (google.protobuf.BoolValue) {}
-    rpc CauseFailure(CauseFailureRequest) returns (google.protobuf.BoolValue) {}
+    rpc Store(StoreRequest) returns (ClientResponse) {}
+    rpc Get(GetRequest) returns (ClientResponse) {}
+    rpc Delete(DeleteRequest) returns (ClientResponse) {}
+    rpc CauseFailure(CauseFailureRequest) returns (ClientResponse) {}
 }

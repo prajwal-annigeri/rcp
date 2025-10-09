@@ -31,5 +31,5 @@
 - In the `failure_client` directory
 - Failure client is used to cause failures at specified times
 - Use the `failure_config.json` to configure the nodes and the failures
-- `cd failure_client` and `go run .` to run the failure client
+- `cd failure_client` and `go run . --config-file "./../nodes.json" --failures "5:leader,10:non-leader,15:random,20:revive"` to run the failure client
 - Failures can be of `leader` or `non-leader` or `random`. The `time` is the time in seconds to wait from when the client started (with `go run .`)  to cause the failure
