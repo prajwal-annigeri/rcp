@@ -159,7 +159,7 @@ def plot_batch(data, output_file="", log=False):
     ax1.set_ylabel("Average Throughput (tps)")
     ax1.set_ylim(bottom=0)
     ax1.grid(True)
-    ax1.legend()
+    ax1.legend(loc="lower right")
     
     # Show latency data
     for key, data in batch_latency_data.items():
@@ -172,7 +172,7 @@ def plot_batch(data, output_file="", log=False):
     ax2.set_ylabel("Median Latency (ms)")
     ax2.set_ylim(bottom=0)
     ax2.grid(True)
-    ax2.legend()
+    ax2.legend(loc="upper left")
 
     if output_file != "":
         plt.savefig(output_file)
@@ -207,7 +207,12 @@ def plot_failure(data, failure, axes, tick=0, K="all", smoothing=False, color_K=
         if smoothing:
             y = smooth(y, window_size=5)
 
-        label = datum["protocol"]
+        label = datum["protocol"].capitalize()
+        if label == "Fraft":
+            label = "FRaft"
+        if label == "Rcp":
+            label = "Orca"
+
         if color_K:
             label += f"(K={datum['K']})"
 
@@ -311,17 +316,17 @@ if __name__ == "__main__":
     # plot_batch(G2_batch_data, output_file="output/plots/batch_g2")
     # # plot_batch(G2_batch_data, output_file="output/plots/batch_g2_log", log=True)
 
-    # # ==================================================
-    # # Plot NG Failures
-    # # ==================================================
+    # ==================================================
+    # Plot NG Failures
+    # ==================================================
 
     # fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
 
-    # NG_failure_data = read_output_folders([
-    #     "output/failure_NG/run1",
-    #     "output/failure_NG/run2",
-    #     "output/failure_NG/run3",
-    #     ], EXPERIMENT_TIME_NG)
+    NG_failure_data = read_output_folders([
+        "output/failure_NG/run1",
+        "output/failure_NG/run2",
+        "output/failure_NG/run3",
+        ], EXPERIMENT_TIME_NG)
 
     # plot_failure(NG_failure_data, "None", ax1, smoothing=SMOOTH_DATA)
     # plot_failure(NG_failure_data, "LF", ax2, smoothing=SMOOTH_DATA)
@@ -337,7 +342,7 @@ if __name__ == "__main__":
     # plt.show()
 
 
-    # fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
+    # fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharey=True, sharex=True, figsize=(6.4, 5.6))
     
     # plot_failure(NG_failure_data, "RF", ax1, smoothing=SMOOTH_DATA)
     # plot_failure(NG_failure_data, "ROF", ax2, smoothing=SMOOTH_DATA)
@@ -346,17 +351,17 @@ if __name__ == "__main__":
     # ax3.set_xlabel("Timestamp (seconds)")
     # handles, labels = ax1.get_legend_handles_labels()
 
-    # ax1.legend()
-    # ax2.legend()
-    # ax3.legend()
-    # # fig.legend(handles, labels, loc="lower center", ncol=3)
-    # # plt.subplots_adjust(bottom=0.2)
+    # # ax1.legend(loc="lower left")
+    # # ax2.legend(loc="lower left")
+    # # ax3.legend(loc="lower left")
+    # fig.legend(handles, labels, loc="lower center", ncol=3)
+    # plt.subplots_adjust(bottom=0.2)
     # plt.savefig("output/plots/failure_ng_others")
     # plt.show()
 
-    # # ==================================================
-    # # Plot G1 Failures
-    # # ==================================================
+    # ==================================================
+    # Plot G1 Failures
+    # ==================================================
 
     # fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
 
@@ -373,15 +378,15 @@ if __name__ == "__main__":
     # handles, labels = ax1.get_legend_handles_labels()
 
     # ax1.legend()
-    # ax2.legend()
+    # ax2.legend(loc="lower left")
     # # fig.legend(handles, labels, loc="lower center", ncol=3)
     # # plt.subplots_adjust(bottom=0.2)
     # plt.savefig("output/plots/failure_g1")
     # plt.show()
 
-    # # ==================================================
-    # # Plot G2 Failures
-    # # ==================================================
+    # ==================================================
+    # Plot G2 Failures
+    # ==================================================
 
     # fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
 
@@ -398,7 +403,7 @@ if __name__ == "__main__":
     # handles, labels = ax1.get_legend_handles_labels()
 
     # ax1.legend()
-    # ax2.legend()
+    # ax2.legend(loc="lower left")
     # # fig.legend(handles, labels, loc="lower center", ncol=3)
     # # plt.subplots_adjust(bottom=0.2)
     # plt.savefig("output/plots/failure_g2")
@@ -416,11 +421,11 @@ if __name__ == "__main__":
 
     # plot_N(N_data, "None", title="N", output_file="output/plots/n_no_failure")
 
-    # ==================================================
-    # Plot NG K
-    # ==================================================
+    # # ==================================================
+    # # Plot NG K
+    # # ==================================================
 
-    fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(7, 5))
+    fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(6.4, 4.8))
 
     K_data = read_output_folders([
         "output/K/run1",
@@ -436,13 +441,13 @@ if __name__ == "__main__":
     handles[1:-1] = [handles[5], handles[1], handles[6], handles[2], handles[7], handles[3], handles[8], handles[4]]
     labels[1:-1] = [labels[5], labels[1], labels[6], labels[2], labels[7], labels[3], labels[8], labels[4]]
 
-    fig.legend(handles, labels, loc="lower center", ncol=5)
+    fig.legend(handles, labels, loc="lower center", ncol=5, prop={'size': 9})
     plt.subplots_adjust(bottom=0.28)
     plt.savefig("output/plots/k_others")
     plt.show()
 
 
-    fig, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(5, 1, sharey=True, sharex=True, figsize=(7, 7))
+    fig, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(5, 1, sharey=True, sharex=True, figsize=(6.4, 7.2))
 
     plot_failure(K_data, "LF", ax1, K="1", tick=5, smoothing=SMOOTH_DATA, color_K=True)
     plot_failure(K_data, "LF", ax2, K="2", tick=5, smoothing=SMOOTH_DATA, color_K=True)
@@ -453,7 +458,7 @@ if __name__ == "__main__":
     ax5.set_xlabel("Timestamp (seconds)")
 
     # fig.text(0.02, 0.55, 'Throughput (tps)', va='center', rotation='vertical')
-    fig.legend(loc="lower center", ncol=5)
-    plt.subplots_adjust(bottom=0.2)
+    fig.legend(loc="lower center", ncol=5, prop={'size': 9})
+    plt.subplots_adjust(top=0.92, bottom=0.18)
     plt.savefig("output/plots/k_leader_failure")
     plt.show()
