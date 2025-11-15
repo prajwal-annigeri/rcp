@@ -143,9 +143,6 @@ def plot_batch(data, output_file="", log=False):
 
         batch_throughput_data[key][int(math.log2(client))] = throughput
         batch_latency_data[key][int(math.log2(client))] = latency
-    
-    # print(batch_throughput_data)
-    # print(batch_latency_data)
 
     # Show throughput data
     _, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
@@ -202,7 +199,6 @@ def plot_failure(data, failure, axes, tick=0, K="all", smoothing=False, color_K=
             continue
 
         y = datum["throughput"]
-        # print(int(sum(y)))
         
         if smoothing:
             y = smooth(y, window_size=5)
@@ -215,6 +211,8 @@ def plot_failure(data, failure, axes, tick=0, K="all", smoothing=False, color_K=
 
         if color_K:
             label += f"(K={datum['K']})"
+
+        print(label, int(sum(y)))
 
         if color_K:
             axes.plot(list(range(1, len(y) + 1)), y,
@@ -285,42 +283,42 @@ if __name__ == "__main__":
     EXPERIMENT_TIME_K = 55
     EXPERIMENT_TIME_N = 60
 
-    # # ==================================================
-    # # Plot batch
-    # # ==================================================
+    # ==================================================
+    # Plot batch
+    # ==================================================
 
-    # NG_batch_data = read_output_folders([
-    #     "output/batch_NG/run1",
-    #     "output/batch_NG/run2",
-    #     "output/batch_NG/run3",
-    #     ], EXPERIMENT_TIME_BATCH)
+    NG_batch_data = read_output_folders([
+        "output/batch_NG/run1",
+        "output/batch_NG/run2",
+        "output/batch_NG/run3",
+        ], EXPERIMENT_TIME_BATCH)
     
-    # plot_batch(NG_batch_data, output_file="output/plots/batch_ng")
-    # # plot_batch(NG_batch_data, output_file="output/plots/batch_ng_log", log=True)
+    plot_batch(NG_batch_data, output_file="output/plots/batch_ng")
+    # plot_batch(NG_batch_data, output_file="output/plots/batch_ng_log", log=True)
 
-    # G1_batch_data = read_output_folders([
-    #     "output/batch_G1/run1",
-    #     "output/batch_G1/run2",
-    #     "output/batch_G1/run3",
-    #     ], EXPERIMENT_TIME_BATCH)
+    G1_batch_data = read_output_folders([
+        "output/batch_G1/run1",
+        "output/batch_G1/run2",
+        "output/batch_G1/run3",
+        ], EXPERIMENT_TIME_BATCH)
     
-    # plot_batch(G1_batch_data, output_file="output/plots/batch_g1")
-    # # plot_batch(G1_batch_data, output_file="output/plots/batch_g1_log", log=True)
+    plot_batch(G1_batch_data, output_file="output/plots/batch_g1")
+    # plot_batch(G1_batch_data, output_file="output/plots/batch_g1_log", log=True)
 
-    # G2_batch_data = read_output_folders([
-    #     "output/batch_G2/run1",
-    #     "output/batch_G2/run2",
-    #     "output/batch_G2/run3",
-    #     ], EXPERIMENT_TIME_BATCH)
+    G2_batch_data = read_output_folders([
+        "output/batch_G2/run1",
+        "output/batch_G2/run2",
+        "output/batch_G2/run3",
+        ], EXPERIMENT_TIME_BATCH)
     
-    # plot_batch(G2_batch_data, output_file="output/plots/batch_g2")
-    # # plot_batch(G2_batch_data, output_file="output/plots/batch_g2_log", log=True)
+    plot_batch(G2_batch_data, output_file="output/plots/batch_g2")
+    # plot_batch(G2_batch_data, output_file="output/plots/batch_g2_log", log=True)
 
     # ==================================================
     # Plot NG Failures
     # ==================================================
 
-    # fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
+    fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
 
     NG_failure_data = read_output_folders([
         "output/failure_NG/run1",
@@ -328,102 +326,102 @@ if __name__ == "__main__":
         "output/failure_NG/run3",
         ], EXPERIMENT_TIME_NG)
 
-    # plot_failure(NG_failure_data, "None", ax1, smoothing=SMOOTH_DATA)
-    # plot_failure(NG_failure_data, "LF", ax2, smoothing=SMOOTH_DATA)
+    plot_failure(NG_failure_data, "None", ax1, smoothing=SMOOTH_DATA)
+    plot_failure(NG_failure_data, "LF", ax2, smoothing=SMOOTH_DATA)
 
-    # ax2.set_xlabel("Timestamp (seconds)")
-    # handles, labels = ax1.get_legend_handles_labels()
+    ax2.set_xlabel("Timestamp (seconds)")
+    handles, labels = ax1.get_legend_handles_labels()
 
-    # ax1.legend()
-    # ax2.legend()
-    # # fig.legend(handles, labels, loc="lower center", ncol=3)
-    # # plt.subplots_adjust(bottom=0.2)
-    # plt.savefig("output/plots/failure_ng")
-    # plt.show()
-
-
-    # fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharey=True, sharex=True, figsize=(6.4, 5.6))
-    
-    # plot_failure(NG_failure_data, "RF", ax1, smoothing=SMOOTH_DATA)
-    # plot_failure(NG_failure_data, "ROF", ax2, smoothing=SMOOTH_DATA)
-    # plot_failure(NG_failure_data, "LOF", ax3, smoothing=SMOOTH_DATA)
-
-    # ax3.set_xlabel("Timestamp (seconds)")
-    # handles, labels = ax1.get_legend_handles_labels()
-
-    # # ax1.legend(loc="lower left")
-    # # ax2.legend(loc="lower left")
-    # # ax3.legend(loc="lower left")
+    ax1.legend()
+    ax2.legend()
     # fig.legend(handles, labels, loc="lower center", ncol=3)
     # plt.subplots_adjust(bottom=0.2)
-    # plt.savefig("output/plots/failure_ng_others")
-    # plt.show()
+    plt.savefig("output/plots/failure_ng")
+    plt.show()
+
+
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharey=True, sharex=True, figsize=(6.4, 5.6))
+    
+    plot_failure(NG_failure_data, "RF", ax1, smoothing=SMOOTH_DATA)
+    plot_failure(NG_failure_data, "ROF", ax2, smoothing=SMOOTH_DATA)
+    plot_failure(NG_failure_data, "LOF", ax3, smoothing=SMOOTH_DATA)
+
+    ax3.set_xlabel("Timestamp (seconds)")
+    handles, labels = ax1.get_legend_handles_labels()
+
+    # ax1.legend(loc="lower left")
+    # ax2.legend(loc="lower left")
+    # ax3.legend(loc="lower left")
+    fig.legend(handles, labels, loc="lower center", ncol=3)
+    plt.subplots_adjust(bottom=0.2)
+    plt.savefig("output/plots/failure_ng_others")
+    plt.show()
 
     # ==================================================
     # Plot G1 Failures
     # ==================================================
 
-    # fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
+    fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
 
-    # G1_failure_data = read_output_folders([
-    #     "output/failure_G1/run1",
-    #     "output/failure_G1/run2",
-    #     "output/failure_G1/run3",
-    #     ], EXPERIMENT_TIME_G1)
+    G1_failure_data = read_output_folders([
+        "output/failure_G1/run1",
+        "output/failure_G1/run2",
+        "output/failure_G1/run3",
+        ], EXPERIMENT_TIME_G1)
 
-    # plot_failure(G1_failure_data, "None", ax1, smoothing=SMOOTH_DATA)
-    # plot_failure(G1_failure_data, "LF", ax2, smoothing=SMOOTH_DATA)
+    plot_failure(G1_failure_data, "None", ax1, smoothing=SMOOTH_DATA)
+    plot_failure(G1_failure_data, "LF", ax2, smoothing=SMOOTH_DATA)
 
-    # ax2.set_xlabel("Timestamp (seconds)")
-    # handles, labels = ax1.get_legend_handles_labels()
+    ax2.set_xlabel("Timestamp (seconds)")
+    handles, labels = ax1.get_legend_handles_labels()
 
-    # ax1.legend()
-    # ax2.legend(loc="lower left")
-    # # fig.legend(handles, labels, loc="lower center", ncol=3)
-    # # plt.subplots_adjust(bottom=0.2)
-    # plt.savefig("output/plots/failure_g1")
-    # plt.show()
+    ax1.legend()
+    ax2.legend(loc="lower left")
+    # fig.legend(handles, labels, loc="lower center", ncol=3)
+    # plt.subplots_adjust(bottom=0.2)
+    plt.savefig("output/plots/failure_g1")
+    plt.show()
 
     # ==================================================
     # Plot G2 Failures
     # ==================================================
 
-    # fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
+    fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
 
-    # G2_failure_data = read_output_folders([
-    #     "output/failure_G2/run1",
-    #     "output/failure_G2/run2",
-    #     "output/failure_G2/run3",
-    #     ], EXPERIMENT_TIME_G2)
+    G2_failure_data = read_output_folders([
+        "output/failure_G2/run1",
+        "output/failure_G2/run2",
+        "output/failure_G2/run3",
+        ], EXPERIMENT_TIME_G2)
 
-    # plot_failure(G2_failure_data, "None", ax1, smoothing=SMOOTH_DATA)
-    # plot_failure(G2_failure_data, "LF", ax2, smoothing=SMOOTH_DATA)
+    plot_failure(G2_failure_data, "None", ax1, smoothing=SMOOTH_DATA)
+    plot_failure(G2_failure_data, "LF", ax2, smoothing=SMOOTH_DATA)
 
-    # ax2.set_xlabel("Timestamp (seconds)")
-    # handles, labels = ax1.get_legend_handles_labels()
+    ax2.set_xlabel("Timestamp (seconds)")
+    handles, labels = ax1.get_legend_handles_labels()
 
-    # ax1.legend()
-    # ax2.legend(loc="lower left")
-    # # fig.legend(handles, labels, loc="lower center", ncol=3)
-    # # plt.subplots_adjust(bottom=0.2)
-    # plt.savefig("output/plots/failure_g2")
-    # plt.show()
+    ax1.legend()
+    ax2.legend(loc="lower left")
+    # fig.legend(handles, labels, loc="lower center", ncol=3)
+    # plt.subplots_adjust(bottom=0.2)
+    plt.savefig("output/plots/failure_g2")
+    plt.show()
 
-    # # ==================================================
-    # # Plot NG N
-    # # ==================================================
+    # ==================================================
+    # Plot NG N
+    # ==================================================
 
-    # N_data = read_output_folders([
-    #     "output/N/run1",
-    #     "output/N/run2",
-    #     "output/N/run3",
-    #     ], EXPERIMENT_TIME_N)
+    N_data = read_output_folders([
+        "output/N/run1",
+        "output/N/run2",
+        "output/N/run3",
+        ], EXPERIMENT_TIME_N)
 
-    # plot_N(N_data, "None", title="N", output_file="output/plots/n_no_failure")
+    plot_N(N_data, "None", title="N", output_file="output/plots/n_no_failure")
 
-    # # ==================================================
-    # # Plot NG K
-    # # ==================================================
+    # ==================================================
+    # Plot NG K
+    # ==================================================
 
     fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(6.4, 4.8))
 
