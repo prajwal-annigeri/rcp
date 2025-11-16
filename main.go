@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"rcp/grpc/kvpb"
 	"rcp/grpc/orcapb"
 	"rcp/node"
 
@@ -74,6 +75,7 @@ func main() {
 	grpcSrv := grpc.NewServer()
 
 	orcapb.RegisterOrcaServer(grpcSrv, nodeInstance)
+	kvpb.RegisterKVStoreServer(grpcSrv, nodeInstance)
 	go func() {
 		if err := grpcSrv.Serve(lis); err != nil {
 			log.Fatalf("failed to serve: %v", err)

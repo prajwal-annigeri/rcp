@@ -1,5 +1,5 @@
 protoc \
   --proto_path=proto \
-  --go_out=grpc \
-  --go-grpc_out=grpc \
+  --go_out=. \
+  --go-grpc_out=. \
   proto/*.proto

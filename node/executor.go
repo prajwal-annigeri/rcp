@@ -45,25 +45,17 @@ func (node *Node) executeUntilLocked(endIndex int64) error {
 
 		switch logEntry.LogType {
 		case orcapb.LogType_OPERATION:
-			opType, payload := decodeKVOperation(logEntry.GetPayload())
-			if payload == nil {
-				log.Panicf("operation log missing payload at index %d", node.execIndex+1)
+			var req kvpb.KVRequest
+			if err := proto.Unmarshal(logEntry.GetPayload(), &req); err != nil {
+				log.Panicf("failed to decode operation payload: %v", err)
 			}
-			switch opType {
-			case kvOpPut:
-				var store kvpb.StoreRequest
-				if err := proto.Unmarshal(payload, &store); err != nil {
-					log.Panicf("failed to decode store payload: %v", err)
-				}
-				node.db.Store(store.GetKey(), store.GetBucket(), store.GetValue())
-			case kvOpDelete:
-				var del kvpb.DeleteRequest
-				if err := proto.Unmarshal(payload, &del); err != nil {
-					log.Panicf("failed to decode delete payload: %v", err)
-				}
-				node.db.Delete(del.GetKey(), del.GetBucket())
+			switch req.GetOp() {
+			case kvpb.OperationType_STORE:
+				node.db.Store(req.GetKey(), req.GetBucket(), req.GetValue())
+			case kvpb.OperationType_DELETE:
+				node.db.Delete(req.GetKey(), req.GetBucket())
 			default:
-				log.Panicf("unhandled operation type %d", opType)
+				log.Panicf("unhandled operation type %d", req.GetOp())
 			}
 			node.doCallback(node.execIndex + 1)
 		case orcapb.LogType_FAILURE:

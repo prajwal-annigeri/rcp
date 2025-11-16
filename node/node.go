@@ -33,11 +33,6 @@ type vote struct {
 	granted bool
 }
 
-const (
-	kvOpPut    byte = 1
-	kvOpDelete byte = 2
-)
-
 type ConfigNode struct {
 	Id       string `json:"id"`
 	IP       string `json:"ip"`
@@ -86,6 +81,7 @@ func (cfg NodeConfig) Validate() error {
 
 type Node struct {
 	orcapb.UnimplementedOrcaServer
+	kvpb.UnimplementedKVStoreServer
 
 	// Unchanged attributes, don't require mutex locking
 	Id             string `json:"id"`
@@ -343,7 +339,8 @@ func (node *Node) HandleStore(key string, bucket string, value string) (string, 
 		node.logBufferChan <- LogWithCallbackChannel{
 			LogEntry: &orcapb.LogEntry{
 				LogType: orcapb.LogType_OPERATION,
-				Payload: marshalKVOperation(kvOpPut, &kvpb.StoreRequest{
+				Payload: marshalKVOperation(&kvpb.KVRequest{
+					Op:     kvpb.OperationType_STORE,
 					Key:    key,
 					Value:  value,
 					Bucket: bucket,
@@ -384,7 +381,8 @@ func (node *Node) HandleDelete(key string, bucket string) (string, error) {
 		node.logBufferChan <- LogWithCallbackChannel{
 			LogEntry: &orcapb.LogEntry{
 				LogType: orcapb.LogType_OPERATION,
-				Payload: marshalKVOperation(kvOpDelete, &kvpb.DeleteRequest{
+				Payload: marshalKVOperation(&kvpb.KVRequest{
+					Op:     kvpb.OperationType_DELETE,
 					Key:    key,
 					Bucket: bucket,
 				}),
@@ -403,19 +401,12 @@ func (node *Node) HandleDelete(key string, bucket string) (string, error) {
 	}
 }
 
-func marshalKVOperation(op byte, msg proto.Message) []byte {
-	payload, err := proto.Marshal(msg)
+func marshalKVOperation(req *kvpb.KVRequest) []byte {
+	payload, err := proto.Marshal(req)
 	if err != nil {
 		log.Panicf("failed to marshal kv operation: %v", err)
 	}
-	return append([]byte{op}, payload...)
-}
-
-func decodeKVOperation(payload []byte) (byte, []byte) {
-	if len(payload) == 0 {
-		return 0, nil
-	}
-	return payload[0], payload[1:]
+	return payload
 }
 
 // This function assume mutex is already locked

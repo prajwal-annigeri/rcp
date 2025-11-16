@@ -126,7 +126,7 @@ func (FailureType) EnumDescriptor() ([]byte, []int) {
 
 type LogEntry struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
-	LogType LogType                `protobuf:"varint,1,opt,name=logType,proto3,enum=orca.LogType" json:"logType,omitempty"`
+	LogType LogType                `protobuf:"varint,1,opt,name=logType,proto3,enum=orcapb.LogType" json:"logType,omitempty"`
 	Term    int64                  `protobuf:"varint,2,opt,name=term,proto3" json:"term,omitempty"`
 	// payload is only needed when logType is OPERATION; FAILURE/RECOVERY entries
 	// can leave it empty.
@@ -634,7 +634,7 @@ func (x *DeleteRequest) GetBucket() string {
 
 type CauseFailureRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          FailureType            `protobuf:"varint,1,opt,name=type,proto3,enum=orca.FailureType" json:"type,omitempty"`
+	Type          FailureType            `protobuf:"varint,1,opt,name=type,proto3,enum=orcapb.FailureType" json:"type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -681,18 +681,18 @@ var File_orca_proto protoreflect.FileDescriptor
 const file_orca_proto_rawDesc = "" +
 	"\n" +
 	"\n" +
-	"orca.proto\x12\x04orca\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1egoogle/protobuf/wrappers.proto\"y\n" +
-	"\bLogEntry\x12'\n" +
-	"\alogType\x18\x01 \x01(\x0e2\r.orca.LogTypeR\alogType\x12\x12\n" +
+	"orca.proto\x12\x06orcapb\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1egoogle/protobuf/wrappers.proto\"{\n" +
+	"\bLogEntry\x12)\n" +
+	"\alogType\x18\x01 \x01(\x0e2\x0f.orcapb.LogTypeR\alogType\x12\x12\n" +
 	"\x04term\x18\x02 \x01(\x03R\x04term\x12\x18\n" +
 	"\apayload\x18\x03 \x01(\fR\apayload\x12\x16\n" +
-	"\x06nodeId\x18\x04 \x01(\tR\x06nodeId\"\xda\x01\n" +
+	"\x06nodeId\x18\x04 \x01(\tR\x06nodeId\"\xdc\x01\n" +
 	"\x14AppendEntriesRequest\x12\x12\n" +
 	"\x04term\x18\x01 \x01(\x03R\x04term\x12\x1a\n" +
 	"\bleaderId\x18\x02 \x01(\tR\bleaderId\x12\"\n" +
 	"\fprevLogIndex\x18\x03 \x01(\x03R\fprevLogIndex\x12 \n" +
-	"\vprevLogTerm\x18\x04 \x01(\x03R\vprevLogTerm\x12(\n" +
-	"\aentries\x18\x05 \x03(\v2\x0e.orca.LogEntryR\aentries\x12\"\n" +
+	"\vprevLogTerm\x18\x04 \x01(\x03R\vprevLogTerm\x12*\n" +
+	"\aentries\x18\x05 \x03(\v2\x10.orcapb.LogEntryR\aentries\x12\"\n" +
 	"\fleaderCommit\x18\x06 \x01(\x03R\fleaderCommit\"[\n" +
 	"\x15AppendEntriesResponse\x12\x12\n" +
 	"\x04term\x18\x01 \x01(\x03R\x04term\x12\x18\n" +
@@ -717,9 +717,9 @@ const file_orca_proto_rawDesc = "" +
 	"\x06bucket\x18\x02 \x01(\tR\x06bucket\"9\n" +
 	"\rDeleteRequest\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x16\n" +
-	"\x06bucket\x18\x02 \x01(\tR\x06bucket\"<\n" +
-	"\x13CauseFailureRequest\x12%\n" +
-	"\x04type\x18\x01 \x01(\x0e2\x11.orca.FailureTypeR\x04type*3\n" +
+	"\x06bucket\x18\x02 \x01(\tR\x06bucket\">\n" +
+	"\x13CauseFailureRequest\x12'\n" +
+	"\x04type\x18\x01 \x01(\x0e2\x13.orcapb.FailureTypeR\x04type*3\n" +
 	"\aLogType\x12\r\n" +
 	"\tOPERATION\x10\x00\x12\v\n" +
 	"\aFAILURE\x10\x01\x12\f\n" +
@@ -731,12 +731,12 @@ const file_orca_proto_rawDesc = "" +
 	"\x06RANDOM\x10\x01\x12\n" +
 	"\n" +
 	"\x06LEADER\x10\x02\x12\v\n" +
-	"\aREPLICA\x10\x032\x99\x02\n" +
-	"\x04Orca\x12H\n" +
-	"\rAppendEntries\x12\x1a.orca.AppendEntriesRequest\x1a\x1b.orca.AppendEntriesResponse\x12B\n" +
-	"\vRequestVote\x12\x18.orca.RequestVoteRequest\x1a\x19.orca.RequestVoteResponse\x12E\n" +
-	"\fCauseFailure\x12\x19.orca.CauseFailureRequest\x1a\x1a.google.protobuf.BoolValue\x12<\n" +
-	"\x06Health\x12\x16.google.protobuf.Empty\x1a\x1a.google.protobuf.BoolValueB\tZ\a/orcapbb\x06proto3"
+	"\aREPLICA\x10\x032\xa3\x02\n" +
+	"\x04Orca\x12L\n" +
+	"\rAppendEntries\x12\x1c.orcapb.AppendEntriesRequest\x1a\x1d.orcapb.AppendEntriesResponse\x12F\n" +
+	"\vRequestVote\x12\x1a.orcapb.RequestVoteRequest\x1a\x1b.orcapb.RequestVoteResponse\x12G\n" +
+	"\fCauseFailure\x12\x1b.orcapb.CauseFailureRequest\x1a\x1a.google.protobuf.BoolValue\x12<\n" +
+	"\x06Health\x12\x16.google.protobuf.Empty\x1a\x1a.google.protobuf.BoolValueB\x14Z\x12grpc/orcapb;orcapbb\x06proto3"
 
 var (
 	file_orca_proto_rawDescOnce sync.Once
@@ -753,32 +753,32 @@ func file_orca_proto_rawDescGZIP() []byte {
 var file_orca_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_orca_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_orca_proto_goTypes = []any{
-	(LogType)(0),                  // 0: orca.LogType
-	(FailureType)(0),              // 1: orca.FailureType
-	(*LogEntry)(nil),              // 2: orca.LogEntry
-	(*AppendEntriesRequest)(nil),  // 3: orca.AppendEntriesRequest
-	(*AppendEntriesResponse)(nil), // 4: orca.AppendEntriesResponse
-	(*RequestVoteRequest)(nil),    // 5: orca.RequestVoteRequest
-	(*RequestVoteResponse)(nil),   // 6: orca.RequestVoteResponse
-	(*StoreRequest)(nil),          // 7: orca.StoreRequest
-	(*GetRequest)(nil),            // 8: orca.GetRequest
-	(*DeleteRequest)(nil),         // 9: orca.DeleteRequest
-	(*CauseFailureRequest)(nil),   // 10: orca.CauseFailureRequest
+	(LogType)(0),                  // 0: orcapb.LogType
+	(FailureType)(0),              // 1: orcapb.FailureType
+	(*LogEntry)(nil),              // 2: orcapb.LogEntry
+	(*AppendEntriesRequest)(nil),  // 3: orcapb.AppendEntriesRequest
+	(*AppendEntriesResponse)(nil), // 4: orcapb.AppendEntriesResponse
+	(*RequestVoteRequest)(nil),    // 5: orcapb.RequestVoteRequest
+	(*RequestVoteResponse)(nil),   // 6: orcapb.RequestVoteResponse
+	(*StoreRequest)(nil),          // 7: orcapb.StoreRequest
+	(*GetRequest)(nil),            // 8: orcapb.GetRequest
+	(*DeleteRequest)(nil),         // 9: orcapb.DeleteRequest
+	(*CauseFailureRequest)(nil),   // 10: orcapb.CauseFailureRequest
 	(*emptypb.Empty)(nil),         // 11: google.protobuf.Empty
 	(*wrapperspb.BoolValue)(nil),  // 12: google.protobuf.BoolValue
 }
 var file_orca_proto_depIdxs = []int32{
-	0,  // 0: orca.LogEntry.logType:type_name -> orca.LogType
-	2,  // 1: orca.AppendEntriesRequest.entries:type_name -> orca.LogEntry
-	1,  // 2: orca.CauseFailureRequest.type:type_name -> orca.FailureType
-	3,  // 3: orca.Orca.AppendEntries:input_type -> orca.AppendEntriesRequest
-	5,  // 4: orca.Orca.RequestVote:input_type -> orca.RequestVoteRequest
-	10, // 5: orca.Orca.CauseFailure:input_type -> orca.CauseFailureRequest
-	11, // 6: orca.Orca.Health:input_type -> google.protobuf.Empty
-	4,  // 7: orca.Orca.AppendEntries:output_type -> orca.AppendEntriesResponse
-	6,  // 8: orca.Orca.RequestVote:output_type -> orca.RequestVoteResponse
-	12, // 9: orca.Orca.CauseFailure:output_type -> google.protobuf.BoolValue
-	12, // 10: orca.Orca.Health:output_type -> google.protobuf.BoolValue
+	0,  // 0: orcapb.LogEntry.logType:type_name -> orcapb.LogType
+	2,  // 1: orcapb.AppendEntriesRequest.entries:type_name -> orcapb.LogEntry
+	1,  // 2: orcapb.CauseFailureRequest.type:type_name -> orcapb.FailureType
+	3,  // 3: orcapb.Orca.AppendEntries:input_type -> orcapb.AppendEntriesRequest
+	5,  // 4: orcapb.Orca.RequestVote:input_type -> orcapb.RequestVoteRequest
+	10, // 5: orcapb.Orca.CauseFailure:input_type -> orcapb.CauseFailureRequest
+	11, // 6: orcapb.Orca.Health:input_type -> google.protobuf.Empty
+	4,  // 7: orcapb.Orca.AppendEntries:output_type -> orcapb.AppendEntriesResponse
+	6,  // 8: orcapb.Orca.RequestVote:output_type -> orcapb.RequestVoteResponse
+	12, // 9: orcapb.Orca.CauseFailure:output_type -> google.protobuf.BoolValue
+	12, // 10: orcapb.Orca.Health:output_type -> google.protobuf.BoolValue
 	7,  // [7:11] is the sub-list for method output_type
 	3,  // [3:7] is the sub-list for method input_type
 	3,  // [3:3] is the sub-list for extension type_name

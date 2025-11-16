@@ -21,10 +21,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Orca_AppendEntries_FullMethodName = "/orca.Orca/AppendEntries"
-	Orca_RequestVote_FullMethodName   = "/orca.Orca/RequestVote"
-	Orca_CauseFailure_FullMethodName  = "/orca.Orca/CauseFailure"
-	Orca_Health_FullMethodName        = "/orca.Orca/Health"
+	Orca_AppendEntries_FullMethodName = "/orcapb.Orca/AppendEntries"
+	Orca_RequestVote_FullMethodName   = "/orcapb.Orca/RequestVote"
+	Orca_CauseFailure_FullMethodName  = "/orcapb.Orca/CauseFailure"
+	Orca_Health_FullMethodName        = "/orcapb.Orca/Health"
 )
 
 // OrcaClient is the client API for Orca service.
@@ -212,7 +212,7 @@ func _Orca_Health_Handler(srv interface{}, ctx context.Context, dec func(interfa
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Orca_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "orca.Orca",
+	ServiceName: "orcapb.Orca",
 	HandlerType: (*OrcaServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

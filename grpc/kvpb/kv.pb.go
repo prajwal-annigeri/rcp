@@ -21,6 +21,55 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type OperationType int32
+
+const (
+	OperationType_STORE  OperationType = 0
+	OperationType_GET    OperationType = 1
+	OperationType_DELETE OperationType = 2
+)
+
+// Enum value maps for OperationType.
+var (
+	OperationType_name = map[int32]string{
+		0: "STORE",
+		1: "GET",
+		2: "DELETE",
+	}
+	OperationType_value = map[string]int32{
+		"STORE":  0,
+		"GET":    1,
+		"DELETE": 2,
+	}
+)
+
+func (x OperationType) Enum() *OperationType {
+	p := new(OperationType)
+	*p = x
+	return p
+}
+
+func (x OperationType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (OperationType) Descriptor() protoreflect.EnumDescriptor {
+	return file_kv_proto_enumTypes[0].Descriptor()
+}
+
+func (OperationType) Type() protoreflect.EnumType {
+	return &file_kv_proto_enumTypes[0]
+}
+
+func (x OperationType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use OperationType.Descriptor instead.
+func (OperationType) EnumDescriptor() ([]byte, []int) {
+	return file_kv_proto_rawDescGZIP(), []int{0}
+}
+
 type ErrorType int32
 
 const (
@@ -63,11 +112,11 @@ func (x ErrorType) String() string {
 }
 
 func (ErrorType) Descriptor() protoreflect.EnumDescriptor {
-	return file_kv_proto_enumTypes[0].Descriptor()
+	return file_kv_proto_enumTypes[1].Descriptor()
 }
 
 func (ErrorType) Type() protoreflect.EnumType {
-	return &file_kv_proto_enumTypes[0]
+	return &file_kv_proto_enumTypes[1]
 }
 
 func (x ErrorType) Number() protoreflect.EnumNumber {
@@ -76,144 +125,34 @@ func (x ErrorType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ErrorType.Descriptor instead.
 func (ErrorType) EnumDescriptor() ([]byte, []int) {
-	return file_kv_proto_rawDescGZIP(), []int{0}
-}
-
-type StoreRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Bucket        string                 `protobuf:"bytes,1,opt,name=bucket,proto3" json:"bucket,omitempty"`
-	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
-	Value         string                 `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *StoreRequest) Reset() {
-	*x = StoreRequest{}
-	mi := &file_kv_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *StoreRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*StoreRequest) ProtoMessage() {}
-
-func (x *StoreRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kv_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use StoreRequest.ProtoReflect.Descriptor instead.
-func (*StoreRequest) Descriptor() ([]byte, []int) {
-	return file_kv_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *StoreRequest) GetBucket() string {
-	if x != nil {
-		return x.Bucket
-	}
-	return ""
-}
-
-func (x *StoreRequest) GetKey() string {
-	if x != nil {
-		return x.Key
-	}
-	return ""
-}
-
-func (x *StoreRequest) GetValue() string {
-	if x != nil {
-		return x.Value
-	}
-	return ""
-}
-
-type GetRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	Bucket        string                 `protobuf:"bytes,2,opt,name=bucket,proto3" json:"bucket,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GetRequest) Reset() {
-	*x = GetRequest{}
-	mi := &file_kv_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GetRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetRequest) ProtoMessage() {}
-
-func (x *GetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kv_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetRequest.ProtoReflect.Descriptor instead.
-func (*GetRequest) Descriptor() ([]byte, []int) {
 	return file_kv_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *GetRequest) GetKey() string {
-	if x != nil {
-		return x.Key
-	}
-	return ""
-}
-
-func (x *GetRequest) GetBucket() string {
-	if x != nil {
-		return x.Bucket
-	}
-	return ""
-}
-
-type DeleteRequest struct {
+type KVRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Op            OperationType          `protobuf:"varint,1,opt,name=op,proto3,enum=kvpb.OperationType" json:"op,omitempty"`
 	Bucket        string                 `protobuf:"bytes,2,opt,name=bucket,proto3" json:"bucket,omitempty"`
+	Key           string                 `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
+	Value         string                 `protobuf:"bytes,4,opt,name=value,proto3" json:"value,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DeleteRequest) Reset() {
-	*x = DeleteRequest{}
-	mi := &file_kv_proto_msgTypes[2]
+func (x *KVRequest) Reset() {
+	*x = KVRequest{}
+	mi := &file_kv_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DeleteRequest) String() string {
+func (x *KVRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DeleteRequest) ProtoMessage() {}
+func (*KVRequest) ProtoMessage() {}
 
-func (x *DeleteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kv_proto_msgTypes[2]
+func (x *KVRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kv_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -224,21 +163,35 @@ func (x *DeleteRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DeleteRequest.ProtoReflect.Descriptor instead.
-func (*DeleteRequest) Descriptor() ([]byte, []int) {
-	return file_kv_proto_rawDescGZIP(), []int{2}
+// Deprecated: Use KVRequest.ProtoReflect.Descriptor instead.
+func (*KVRequest) Descriptor() ([]byte, []int) {
+	return file_kv_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *DeleteRequest) GetKey() string {
+func (x *KVRequest) GetOp() OperationType {
+	if x != nil {
+		return x.Op
+	}
+	return OperationType_STORE
+}
+
+func (x *KVRequest) GetBucket() string {
+	if x != nil {
+		return x.Bucket
+	}
+	return ""
+}
+
+func (x *KVRequest) GetKey() string {
 	if x != nil {
 		return x.Key
 	}
 	return ""
 }
 
-func (x *DeleteRequest) GetBucket() string {
+func (x *KVRequest) GetValue() string {
 	if x != nil {
-		return x.Bucket
+		return x.Value
 	}
 	return ""
 }
@@ -246,7 +199,7 @@ func (x *DeleteRequest) GetBucket() string {
 type ClientResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	Error         ErrorType              `protobuf:"varint,2,opt,name=error,proto3,enum=database.kv.ErrorType" json:"error,omitempty"`
+	Error         ErrorType              `protobuf:"varint,2,opt,name=error,proto3,enum=kvpb.ErrorType" json:"error,omitempty"`
 	Value         string                 `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -254,7 +207,7 @@ type ClientResponse struct {
 
 func (x *ClientResponse) Reset() {
 	*x = ClientResponse{}
-	mi := &file_kv_proto_msgTypes[3]
+	mi := &file_kv_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -266,7 +219,7 @@ func (x *ClientResponse) String() string {
 func (*ClientResponse) ProtoMessage() {}
 
 func (x *ClientResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kv_proto_msgTypes[3]
+	mi := &file_kv_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -279,7 +232,7 @@ func (x *ClientResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClientResponse.ProtoReflect.Descriptor instead.
 func (*ClientResponse) Descriptor() ([]byte, []int) {
-	return file_kv_proto_rawDescGZIP(), []int{3}
+	return file_kv_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *ClientResponse) GetSuccess() bool {
@@ -307,22 +260,21 @@ var File_kv_proto protoreflect.FileDescriptor
 
 const file_kv_proto_rawDesc = "" +
 	"\n" +
-	"\bkv.proto\x12\vdatabase.kv\"N\n" +
-	"\fStoreRequest\x12\x16\n" +
-	"\x06bucket\x18\x01 \x01(\tR\x06bucket\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x03 \x01(\tR\x05value\"6\n" +
-	"\n" +
-	"GetRequest\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x16\n" +
-	"\x06bucket\x18\x02 \x01(\tR\x06bucket\"9\n" +
-	"\rDeleteRequest\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x16\n" +
-	"\x06bucket\x18\x02 \x01(\tR\x06bucket\"n\n" +
+	"\bkv.proto\x12\x04kvpb\"p\n" +
+	"\tKVRequest\x12#\n" +
+	"\x02op\x18\x01 \x01(\x0e2\x13.kvpb.OperationTypeR\x02op\x12\x16\n" +
+	"\x06bucket\x18\x02 \x01(\tR\x06bucket\x12\x10\n" +
+	"\x03key\x18\x03 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x04 \x01(\tR\x05value\"g\n" +
 	"\x0eClientResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\x12,\n" +
-	"\x05error\x18\x02 \x01(\x0e2\x16.database.kv.ErrorTypeR\x05error\x12\x14\n" +
-	"\x05value\x18\x03 \x01(\tR\x05value*g\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12%\n" +
+	"\x05error\x18\x02 \x01(\x0e2\x0f.kvpb.ErrorTypeR\x05error\x12\x14\n" +
+	"\x05value\x18\x03 \x01(\tR\x05value*/\n" +
+	"\rOperationType\x12\t\n" +
+	"\x05STORE\x10\x00\x12\a\n" +
+	"\x03GET\x10\x01\x12\n" +
+	"\n" +
+	"\x06DELETE\x10\x02*g\n" +
 	"\tErrorType\x12\r\n" +
 	"\tNOT_ALIVE\x10\x00\x12\x0e\n" +
 	"\n" +
@@ -331,11 +283,9 @@ const file_kv_proto_rawDesc = "" +
 	"\vBAD_REQUEST\x10\x03\x12\x0e\n" +
 	"\n" +
 	"UNEXPECTED\x10\x04\x12\v\n" +
-	"\aTIMEOUT\x10\x052\xca\x01\n" +
-	"\aKVStore\x12?\n" +
-	"\x05Store\x12\x19.database.kv.StoreRequest\x1a\x1b.database.kv.ClientResponse\x12;\n" +
-	"\x03Get\x12\x17.database.kv.GetRequest\x1a\x1b.database.kv.ClientResponse\x12A\n" +
-	"\x06Delete\x12\x1a.database.kv.DeleteRequest\x1a\x1b.database.kv.ClientResponseB\aZ\x05/kvpbb\x06proto3"
+	"\aTIMEOUT\x10\x052D\n" +
+	"\aKVStore\x129\n" +
+	"\x10PerformOperation\x12\x0f.kvpb.KVRequest\x1a\x14.kvpb.ClientResponseB\x10Z\x0egrpc/kvpb;kvpbb\x06proto3"
 
 var (
 	file_kv_proto_rawDescOnce sync.Once
@@ -349,28 +299,24 @@ func file_kv_proto_rawDescGZIP() []byte {
 	return file_kv_proto_rawDescData
 }
 
-var file_kv_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_kv_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_kv_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_kv_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_kv_proto_goTypes = []any{
-	(ErrorType)(0),         // 0: database.kv.ErrorType
-	(*StoreRequest)(nil),   // 1: database.kv.StoreRequest
-	(*GetRequest)(nil),     // 2: database.kv.GetRequest
-	(*DeleteRequest)(nil),  // 3: database.kv.DeleteRequest
-	(*ClientResponse)(nil), // 4: database.kv.ClientResponse
+	(OperationType)(0),     // 0: kvpb.OperationType
+	(ErrorType)(0),         // 1: kvpb.ErrorType
+	(*KVRequest)(nil),      // 2: kvpb.KVRequest
+	(*ClientResponse)(nil), // 3: kvpb.ClientResponse
 }
 var file_kv_proto_depIdxs = []int32{
-	0, // 0: database.kv.ClientResponse.error:type_name -> database.kv.ErrorType
-	1, // 1: database.kv.KVStore.Store:input_type -> database.kv.StoreRequest
-	2, // 2: database.kv.KVStore.Get:input_type -> database.kv.GetRequest
-	3, // 3: database.kv.KVStore.Delete:input_type -> database.kv.DeleteRequest
-	4, // 4: database.kv.KVStore.Store:output_type -> database.kv.ClientResponse
-	4, // 5: database.kv.KVStore.Get:output_type -> database.kv.ClientResponse
-	4, // 6: database.kv.KVStore.Delete:output_type -> database.kv.ClientResponse
-	4, // [4:7] is the sub-list for method output_type
-	1, // [1:4] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	0, // 0: kvpb.KVRequest.op:type_name -> kvpb.OperationType
+	1, // 1: kvpb.ClientResponse.error:type_name -> kvpb.ErrorType
+	2, // 2: kvpb.KVStore.PerformOperation:input_type -> kvpb.KVRequest
+	3, // 3: kvpb.KVStore.PerformOperation:output_type -> kvpb.ClientResponse
+	3, // [3:4] is the sub-list for method output_type
+	2, // [2:3] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_kv_proto_init() }
@@ -383,8 +329,8 @@ func file_kv_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kv_proto_rawDesc), len(file_kv_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   4,
+			NumEnums:      2,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -2,75 +2,54 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"time"
+
+	"rcp/grpc/kvpb"
+	"rcp/grpc/orcapb"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 type Node struct {
-	ID       string `json:"id"`
-	HttpPort string `json:"http_port"`
-	IP       string `json:"ip"`
+	ID   string `json:"id"`
+	Port string `json:"port"`
+	IP   string `json:"ip"`
 }
 
 type Config struct {
-	K     int    `json:"K"`
 	Nodes []Node `json:"nodes"`
 }
 
 type RCPClient struct {
-	httpClient  http.Client
-	serverAddrs map[string]string
-}
-
-type GetValueResponse struct {
-	Found bool   `json:"found"`
-	Value string `json:"value"`
-}
-
-type ErrorResponse struct {
-	Error string `json:"error"`
-}
-
-func LoadConfig(filename string) (*Config, error) {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
-
-	var config Config
-	err = json.Unmarshal(data, &config)
-	if err != nil {
-		return nil, err
-	}
-
-	return &config, nil
+	kvClients   map[string]kvpb.KVStoreClient
+	orcaClients map[string]orcapb.OrcaClient
+	conns       map[string]*grpc.ClientConn
 }
 
 func main() {
 	config, err := LoadConfig("../nodes.json")
 	if err != nil {
-		log.Fatal("Error loading config: ", err)
+		log.Fatalf("Error loading config: %v", err)
 	}
 
-	rcp := &RCPClient{}
-	rcp.serverAddrs = make(map[string]string)
+	client := newRCPClient()
+	defer client.close()
 
 	for _, node := range config.Nodes {
-		addr := "http://" + node.IP + node.HttpPort
-		rcp.serverAddrs[node.ID] = addr
+		addr := fmt.Sprintf("%s:%s", node.IP, node.Port)
+		if err := client.addNode(node.ID, addr); err != nil {
+			log.Fatalf("Failed to connect to %s: %v", node.ID, err)
+		}
 	}
-
-	client := http.Client{
-		Timeout: 10 * time.Second,
-	}
-	rcp.httpClient = client
 
 	for {
 		fmt.Println("\nMenu:")
@@ -80,43 +59,71 @@ func main() {
 		fmt.Println("4. Cause failure")
 		fmt.Println("0. Exit")
 		fmt.Print("Enter choice: ")
+
 		var choice int
 		fmt.Scan(&choice)
 
 		switch choice {
 		case 1:
-			rcp.setValue()
+			client.setValue()
 		case 2:
-			rcp.getValue()
+			client.getValue()
 		case 3:
-			rcp.deleteKey()
+			client.deleteKey()
 		case 4:
-			rcp.causeFailure()
+			client.causeFailure()
 		case 0:
 			fmt.Println("Exiting...")
 			return
-
 		default:
-			fmt.Println("Invalid choice, try again.")
+			fmt.Println("Invalid choice.")
 		}
 	}
 }
 
-func (c *RCPClient) setValue() {
-	reader := bufio.NewReader(os.Stdin)
+func newRCPClient() *RCPClient {
+	return &RCPClient{
+		kvClients:   make(map[string]kvpb.KVStoreClient),
+		orcaClients: make(map[string]orcapb.OrcaClient),
+		conns:       make(map[string]*grpc.ClientConn),
+	}
+}
 
-	// Ask for Server ID
-	fmt.Print("Enter Node ID (e.g., S1, S2, S3): ")
+func (c *RCPClient) addNode(id, addr string) error {
+	conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return err
+	}
+
+	c.conns[id] = conn
+	c.kvClients[id] = kvpb.NewKVStoreClient(conn)
+	c.orcaClients[id] = orcapb.NewOrcaClient(conn)
+	return nil
+}
+
+func (c *RCPClient) close() {
+	for _, conn := range c.conns {
+		conn.Close()
+	}
+}
+
+func (c *RCPClient) promptServerID() (string, bool) {
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("Enter Node ID (e.g., S1): ")
 	serverID, _ := reader.ReadString('\n')
 	serverID = strings.TrimSpace(serverID)
+	_, ok := c.kvClients[serverID]
+	return serverID, ok
+}
 
-	// Get HTTP port for the server
-	addr, exists := c.serverAddrs[serverID]
-	if !exists {
-		fmt.Println("Invalid Server ID!")
+func (c *RCPClient) setValue() {
+	serverID, ok := c.promptServerID()
+	if !ok {
+		fmt.Println("Invalid server ID.")
 		return
 	}
 
+	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("Enter Key: ")
 	key, _ := reader.ReadString('\n')
 	key = strings.TrimSpace(key)
@@ -129,55 +136,31 @@ func (c *RCPClient) setValue() {
 	bucket, _ := reader.ReadString('\n')
 	bucket = strings.TrimSpace(bucket)
 
-	begin := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	params := url.Values{}
-	params.Add("key", key)
-	params.Add("value", value)
-	params.Add("bucket", bucket)
-
-	reqURL := fmt.Sprintf("%s/put", addr) + "?" + params.Encode()
-
-	req, err := http.NewRequest(http.MethodPost, reqURL, nil)
+	_, err := c.kvClients[serverID].PerformOperation(ctx, &kvpb.KVRequest{
+		Op:     kvpb.OperationType_STORE,
+		Key:    key,
+		Value:  value,
+		Bucket: bucket,
+	})
 	if err != nil {
-		fmt.Println("Error creating request:", err)
+		c.handleError(err)
 		return
 	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		fmt.Println("Error sending request:", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusTemporaryRedirect {
-		var data ErrorResponse
-		json.NewDecoder(resp.Body).Decode(&data)
-		log.Printf("Store request denied, leader is %s", data.Error)
-		return
-	}
-
-	log.Printf("Time: %v", time.Since(begin))
 
 	fmt.Println("Store request sent!")
 }
 
-func (c *RCPClient) deleteKey() {
-	reader := bufio.NewReader(os.Stdin)
-
-	// Ask for Server ID
-	fmt.Print("Enter Node ID (e.g., S1, S2, S3): ")
-	serverID, _ := reader.ReadString('\n')
-	serverID = strings.TrimSpace(serverID)
-
-	// Get HTTP port for the server
-	addr, exists := c.serverAddrs[serverID]
-	if !exists {
-		fmt.Println("Invalid Server ID!")
+func (c *RCPClient) getValue() {
+	serverID, ok := c.promptServerID()
+	if !ok {
+		fmt.Println("Invalid server ID.")
 		return
 	}
 
+	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("Enter Key: ")
 	key, _ := reader.ReadString('\n')
 	key = strings.TrimSpace(key)
@@ -186,168 +169,120 @@ func (c *RCPClient) deleteKey() {
 	bucket, _ := reader.ReadString('\n')
 	bucket = strings.TrimSpace(bucket)
 
-	begin := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
 
-	params := url.Values{}
-	params.Add("key", key)
-	params.Add("bucket", bucket)
-
-	reqURL := fmt.Sprintf("%s/del", addr) + "?" + params.Encode()
-	fmt.Println(reqURL)
-
-	req, err := http.NewRequest(http.MethodDelete, reqURL, nil)
+	resp, err := c.kvClients[serverID].PerformOperation(ctx, &kvpb.KVRequest{
+		Op:     kvpb.OperationType_GET,
+		Key:    key,
+		Bucket: bucket,
+	})
 	if err != nil {
-		fmt.Println("Error creating request:", err)
+		c.handleError(err)
 		return
 	}
 
-	resp, err := c.httpClient.Do(req)
+	if !resp.GetSuccess() {
+		fmt.Printf("Error: %s\n", resp.GetError())
+		return
+	}
+
+	fmt.Printf("Value: %s\n", resp.GetValue())
+}
+
+func (c *RCPClient) deleteKey() {
+	serverID, ok := c.promptServerID()
+	if !ok {
+		fmt.Println("Invalid server ID.")
+		return
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("Enter Key: ")
+	key, _ := reader.ReadString('\n')
+	key = strings.TrimSpace(key)
+
+	fmt.Print("Enter Bucket: ")
+	bucket, _ := reader.ReadString('\n')
+	bucket = strings.TrimSpace(bucket)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := c.kvClients[serverID].PerformOperation(ctx, &kvpb.KVRequest{
+		Op:     kvpb.OperationType_DELETE,
+		Key:    key,
+		Bucket: bucket,
+	})
 	if err != nil {
-		fmt.Println("Error sending request:", err)
+		c.handleError(err)
 		return
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusTemporaryRedirect {
-		var data ErrorResponse
-		json.NewDecoder(resp.Body).Decode(&data)
-		log.Printf("Store request denied, leader is %s", data.Error)
-		return
-	}
-
-	log.Printf("Time: %v", time.Since(begin))
 
 	fmt.Println("Delete request sent!")
 }
 
-// getValue makes Get request to query KV store
-func (c *RCPClient) getValue() {
-	reader := bufio.NewReader(os.Stdin)
-
-	// Ask for Server ID
-	fmt.Print("Enter Server ID (e.g., S1, S2, S3) or 'all' to query all servers: ")
-	serverID, _ := reader.ReadString('\n')
-	serverID = strings.TrimSpace(serverID)
-
-	fmt.Print("Enter Key: ")
-	key, _ := reader.ReadString('\n')
-	key = strings.TrimSpace(key)
-
-	fmt.Print("Enter Bucket: ")
-	bucket, _ := reader.ReadString('\n')
-	bucket = strings.TrimSpace(bucket)
-
-	params := url.Values{}
-	params.Add("key", key)
-	params.Add("bucket", bucket)
-
-	if serverID == "all" {
-		for k, v := range c.serverAddrs {
-			reqURL := fmt.Sprintf("%s/get", v) + "?" + params.Encode()
-
-			req, err := http.NewRequest(http.MethodGet, reqURL, nil)
-			if err != nil {
-				fmt.Println("Error creating request:", err)
-				continue
-			}
-
-			resp, err := c.httpClient.Do(req)
-			if err != nil {
-				fmt.Println("Error sending request:", err)
-				continue
-			}
-			defer resp.Body.Close()
-
-			var getValResp GetValueResponse
-			if err := json.NewDecoder(resp.Body).Decode(&getValResp); err != nil {
-				fmt.Println("Error decode json response:", err)
-				continue
-			}
-
-			if !getValResp.Found {
-				fmt.Printf("%s: Error key not found\n", k)
-				continue
-			}
-
-			fmt.Printf("Value on %s: %s\n", k, getValResp.Value)
-		}
-
-	} else {
-		// Get HTTP port for the server
-		addr, exists := c.serverAddrs[serverID]
-		if !exists {
-			fmt.Println("Invalid Server ID!")
-			return
-		}
-
-		reqURL := fmt.Sprintf("%s/get", addr) + "?" + params.Encode()
-
-		req, err := http.NewRequest(http.MethodGet, reqURL, nil)
-		if err != nil {
-			fmt.Println("Error creating request:", err)
-			return
-		}
-
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			fmt.Println("Error sending request:", err)
-			return
-		}
-		defer resp.Body.Close()
-
-		var getValResp GetValueResponse
-		if err := json.NewDecoder(resp.Body).Decode(&getValResp); err != nil {
-			fmt.Println("Error decode json response:", err)
-			return
-		}
-
-		if !getValResp.Found {
-			fmt.Println("Error key not found")
-			return
-		}
-
-		fmt.Printf("Value on %s: %s\n", serverID, getValResp.Value)
-	}
-
-}
-
 func (c *RCPClient) causeFailure() {
-	reader := bufio.NewReader(os.Stdin)
-
-	// Ask for Server ID
-	fmt.Print("Enter contact server ID (e.g., S1, S2, S3): ")
-	serverID, _ := reader.ReadString('\n')
-	serverID = strings.TrimSpace(serverID)
-
-	// Get HTTP port for the server
-	addr, exists := c.serverAddrs[serverID]
-	if !exists {
-		fmt.Println("Invalid Server ID!")
+	serverID, ok := c.promptServerID()
+	if !ok {
+		fmt.Println("Invalid server ID.")
 		return
 	}
 
-	// Ask for Key and Value
+	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("Enter failure type (leader/non-leader/random/revive): ")
 	failureType, _ := reader.ReadString('\n')
 	failureType = strings.TrimSpace(failureType)
 
-	resp, err := http.Get(fmt.Sprintf("%s/cause-failure?type=%s", addr, failureType))
-	if err != nil {
-		log.Printf("Error causing failure: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Printf("Failed to read response body: %s", err)
+	ft, ok := map[string]orcapb.FailureType{
+		"leader":     orcapb.FailureType_LEADER,
+		"non-leader": orcapb.FailureType_REPLICA,
+		"random":     orcapb.FailureType_RANDOM,
+		"revive":     orcapb.FailureType_REVIVE,
+	}[failureType]
+	if !ok {
+		fmt.Println("Unsupported failure type.")
 		return
 	}
 
-	if resp.StatusCode == http.StatusOK {
-		log.Printf("Cause failure response: %v", string(body))
-		return
-	} else {
-		log.Printf("Unexpected error %d", resp.StatusCode)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	_, err := c.orcaClients[serverID].CauseFailure(ctx, &orcapb.CauseFailureRequest{
+		Type: ft,
+	})
+	if err != nil {
+		c.handleError(err)
 		return
 	}
+
+	fmt.Println("Failure request sent!")
+}
+
+func (c *RCPClient) handleError(err error) {
+	st, ok := status.FromError(err)
+	if !ok {
+		fmt.Printf("RPC error: %v\n", err)
+		return
+	}
+
+	if st.Code() == codes.PermissionDenied {
+		fmt.Printf("Redirected to leader: %s\n", st.Message())
+		return
+	}
+
+	fmt.Printf("RPC error: %v\n", err)
+}
+
+func LoadConfig(filename string) (*Config, error) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	var config Config
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, err
+	}
+	return &config, nil
 }

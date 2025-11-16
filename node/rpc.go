@@ -2,8 +2,12 @@ package node
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"rcp/constants"
+	db "rcp/db"
+	"rcp/grpc/kvpb"
 	rcppb "rcp/grpc/orcapb"
 	"time"
 
@@ -249,6 +253,91 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 
 func (node *Node) Health(ctx context.Context, req *emptypb.Empty) (*wrapperspb.BoolValue, error) {
 	return &wrapperspb.BoolValue{Value: true}, nil
+}
+
+func (node *Node) PerformOperation(ctx context.Context, req *kvpb.KVRequest) (*kvpb.ClientResponse, error) {
+	if !node.Live {
+		return &kvpb.ClientResponse{
+			Success: false,
+			Error:   kvpb.ErrorType_NOT_ALIVE,
+		}, nil
+	}
+
+	if req.Key == "" {
+		return &kvpb.ClientResponse{
+			Success: false,
+			Error:   kvpb.ErrorType_BAD_REQUEST,
+		}, nil
+	}
+
+	bucket := req.Bucket
+	if bucket == "" {
+		bucket = constants.DefaultBucket
+	}
+
+	switch req.Op {
+	case kvpb.OperationType_STORE:
+		if req.Value == "" {
+			return &kvpb.ClientResponse{
+				Success: false,
+				Error:   kvpb.ErrorType_BAD_REQUEST,
+				Value:   "missing value",
+			}, nil
+		}
+		_, err := node.HandleStore(req.Key, bucket, req.Value)
+		if resp, kvErr := node.handleKVError(err); kvErr != nil || resp != nil {
+			return resp, kvErr
+		}
+		return &kvpb.ClientResponse{Success: true}, nil
+	case kvpb.OperationType_GET:
+		value, err := node.HandleGet(req.Key, bucket)
+		if err != nil {
+			if errors.Is(err, db.ErrNotFound) {
+				return &kvpb.ClientResponse{
+					Success: false,
+					Error:   kvpb.ErrorType_NOT_FOUND,
+				}, nil
+			}
+			return &kvpb.ClientResponse{
+				Success: false,
+				Error:   kvpb.ErrorType_BAD_REQUEST,
+			}, nil
+		}
+		return &kvpb.ClientResponse{
+			Success: true,
+			Value:   value,
+		}, nil
+	case kvpb.OperationType_DELETE:
+		_, err := node.HandleDelete(req.Key, bucket)
+		if resp, kvErr := node.handleKVError(err); kvErr != nil || resp != nil {
+			return resp, kvErr
+		}
+		return &kvpb.ClientResponse{Success: true}, nil
+	default:
+		return &kvpb.ClientResponse{
+			Success: false,
+			Error:   kvpb.ErrorType_BAD_REQUEST,
+		}, nil
+	}
+}
+
+func (node *Node) handleKVError(err error) (*kvpb.ClientResponse, error) {
+	if err == nil {
+		return nil, nil
+	}
+	if errors.Is(err, ErrNotLeader) {
+		return nil, status.Error(codes.PermissionDenied, node.votedFor)
+	}
+	if errors.Is(err, ErrTimeOut) {
+		return &kvpb.ClientResponse{
+			Success: false,
+			Error:   kvpb.ErrorType_TIMEOUT,
+		}, nil
+	}
+	return &kvpb.ClientResponse{
+		Success: false,
+		Error:   kvpb.ErrorType_UNEXPECTED,
+	}, nil
 }
 
 func (node *Node) CauseFailure(ctx context.Context, req *rcppb.CauseFailureRequest) (*wrapperspb.BoolValue, error) {

@@ -1,23 +1,20 @@
 syntax = "proto3";
 
-option go_package = "rcp/grpc/kvpb;kvpb";
+option go_package = "grpc/kvpb;kvpb";
 
 package kvpb;
 
-message StoreRequest {
-  string bucket = 1;
-  string key = 2;
-  string value = 3;
+enum OperationType {
+  STORE = 0;
+  GET = 1;
+  DELETE = 2;
 }
 
-message GetRequest {
-  string key = 1;
+message KVRequest {
+  OperationType op = 1;
   string bucket = 2;
-}
-
-message DeleteRequest {
-  string key = 1;
-  string bucket = 2;
+  string key = 3;
+  string value = 4;
 }
 
 enum ErrorType {
@@ -35,21 +32,6 @@ message ClientResponse {
   string value = 3;
 }
 
-enum OperationType {
-  OPERATION_UNKNOWN = 0;
-  OPERATION_PUT = 1;
-  OPERATION_DELETE = 2;
-}
-
-message Operation {
-  OperationType op = 1;
-  string bucket = 2;
-  string key = 3;
-  string value = 4;
-}
-
 service KVStore {
-  rpc Store(StoreRequest) returns (ClientResponse);
-  rpc Get(GetRequest) returns (ClientResponse);
-  rpc Delete(DeleteRequest) returns (ClientResponse);
+  rpc PerformOperation(KVRequest) returns (ClientResponse);
 }
