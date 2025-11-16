@@ -6,8 +6,8 @@ import (
 	"io"
 	"log"
 	"net"
+	"rcp/grpc/orcapb"
 	"rcp/node"
-	"rcp/rcppb"
 
 	"google.golang.org/grpc"
 )
@@ -17,7 +17,7 @@ var (
 	logs               = flag.Bool("logs", false, "Logging")
 	protocol           = flag.String("protocol", "rcp", "raft/fraft/rcp")
 	persist            = flag.Bool("persist", false, "Persistent or in-memory")
-	config             = flag.String("config", "", "node config JSON")
+	configFlag         = flag.String("config", "", "node config JSON")
 	configFile         = flag.String("config-file", "./nodes.json", "node config JSON filename")
 	K                  = flag.Int("K", 2, "Value of K")
 	batchSizeLow       = flag.Int("batch-low", 100, "Batch size of new request to trigger AppendEntries")
@@ -39,33 +39,50 @@ func main() {
 		log.SetOutput(io.Discard)
 	}
 
-	if *nodeId == "" {
-		log.Fatalf("Node ID is required")
+	nodeCfg := node.NodeConfig{
+		NodeID:             *nodeId,
+		Protocol:           *protocol,
+		Persistent:         *persist,
+		ConfigJSON:         *configFlag,
+		ConfigFile:         *configFile,
+		K:                  *K,
+		BatchSizeLow:       *batchSizeLow,
+		BatchSizeHigh:      *batchSizeHigh,
+		BackoffDec:         *backoffDec,
+		ConsensusTimeout:   *consensusTimeout,
+		ElectionTimeoutMin: *electionTimeoutMin,
+		ElectionTimeoutMax: *electionTimeoutMax,
+		BatchTimeout:       *batchTimeout,
+		HeartbeatTimeout:   *heartbeatTimeout,
 	}
 
-	if *protocol != "rcp" && *protocol != "raft" && *protocol != "fraft" {
-		log.Fatalf("protocol can either 'rcp' or 'fraft' or 'raft'")
+	if err := nodeCfg.Validate(); err != nil {
+		log.Fatalf("invalid configuration: %v", err)
 	}
 
-	node, err := node.NewNode(*nodeId, *protocol, *persist, *config, *configFile, *K, *batchSizeLow, *batchSizeHigh, *backoffDec, *consensusTimeout, *electionTimeoutMin, *electionTimeoutMax, *batchTimeout, *heartbeatTimeout)
+	nodeInstance, err := node.NewNode(nodeCfg)
 	if err != nil {
 		log.Fatalf("Error creating node: %v", err)
 	}
 
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", node.Port))
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", nodeInstance.Port))
 	if err != nil {
-		log.Fatalf("Failed to listen on port %v: %v", node.Port, err)
+		log.Fatalf("Failed to listen on port %v: %v", nodeInstance.Port, err)
 	}
-	log.Printf("Listening on port: %v\n", node.Port)
+	log.Printf("Listening on port: %v\n", nodeInstance.Port)
 
 	grpcSrv := grpc.NewServer()
 
-	rcppb.RegisterRCPServer(grpcSrv, node)
+	orcapb.RegisterOrcaServer(grpcSrv, nodeInstance)
 	go func() {
 		if err := grpcSrv.Serve(lis); err != nil {
 			log.Fatalf("failed to serve: %v", err)
 		}
 	}()
 
-	node.Start()
+	if err := nodeInstance.Start(); err != nil {
+		log.Fatalf("Failed to start node: %v", err)
+	}
+
+	nodeInstance.RunInteractiveMenu()
 }

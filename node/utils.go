@@ -5,13 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"rcp/rcppb"
+	"rcp/grpc/orcapb"
 	"sort"
 	"strings"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type kv struct {
@@ -47,7 +48,7 @@ func (node *Node) establishConns() error {
 			if err != nil {
 				return err
 			}
-			client := rcppb.NewRCPClient(conn)
+			client := orcapb.NewOrcaClient(conn)
 
 			node.mutex.Lock()
 			node.ClientMap[id] = client
@@ -71,7 +72,7 @@ func (node *Node) checkHealth(nodeID string) {
 	}
 
 	for {
-		_, err := grpcClient.Healthz(context.Background(), &rcppb.HealthzRequest{})
+		_, err := grpcClient.Health(context.Background(), &emptypb.Empty{})
 		if err == nil {
 			connectedNodes := node.initialConnectionEstablished.Add(1)
 			log.Printf("Connected to %s!", nodeID)
@@ -124,6 +125,24 @@ func (node *Node) printState() {
 	}
 
 	log.Printf("%s", serverStatusString.String())
+}
+
+// RunInteractiveMenu exposes the previous CLI loop for interactive runs.
+func (node *Node) RunInteractiveMenu() {
+	for {
+		printMenu()
+		var input string
+		fmt.Scan(&input)
+
+		switch input {
+		case "2":
+			node.db.PrintAllLogs()
+		case "4":
+			node.printState()
+		default:
+			fmt.Println("Invalid option. Please choose again.")
+		}
+	}
 }
 
 // func (node *Node) forwardToLeader(storeReq *rcppb.StoreRequest) {

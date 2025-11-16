@@ -6,7 +6,7 @@ import (
 	"log"
 	"math/rand"
 	"rcp/constants"
-	"rcp/rcppb"
+	"rcp/grpc/orcapb"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -122,8 +122,8 @@ func (node *Node) startHeartbeatLoop(nodeId string) {
 								if _, pendingFailure := node.pendingFailureSet[nodeId]; !pendingFailure {
 									log.Printf("Failure detected on %s", nodeId)
 									// If node is not failed nor pending failure, failure detected
-									failureLog := &rcppb.LogEntry{
-										LogType: rcppb.LogType_FAILURE,
+									failureLog := &orcapb.LogEntry{
+										LogType: orcapb.LogType_FAILURE,
 										NodeId:  nodeId,
 										Term:    node.currentTerm,
 									}
@@ -195,7 +195,7 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) 
 		prevLogTerm = 0
 	}
 
-	req := &rcppb.AppendEntriesReq{
+	req := &orcapb.AppendEntriesRequest{
 		Term:         node.currentTerm,
 		LeaderId:     node.Id,
 		PrevLogIndex: nextIndex - 1,
@@ -232,8 +232,8 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) 
 		// If node failed, move it to pending recovery if not yet there already
 		if _, failed := node.failedSet[nodeId]; failed {
 			if _, pendingRecovery := node.pendingRecoverySet[nodeId]; !pendingRecovery {
-				recoveryLog := &rcppb.LogEntry{
-					LogType: rcppb.LogType_RECOVERY,
+				recoveryLog := &orcapb.LogEntry{
+					LogType: orcapb.LogType_RECOVERY,
 					NodeId:  nodeId,
 					Term:    node.currentTerm,
 				}

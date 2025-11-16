@@ -3,28 +3,27 @@ package node
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"rcp/db"
-	"rcp/rcppb"
+	"rcp/grpc/kvpb"
+	"rcp/grpc/orcapb"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 )
-
-var nodes []*Node
-var config ConfigFile
 
 type CallbackReply struct {
 	Value string
 	Error error
 }
 type LogWithCallbackChannel struct {
-	LogEntry        *rcppb.LogEntry
+	LogEntry        *orcapb.LogEntry
 	CallbackChannel chan CallbackReply
 }
 
@@ -33,8 +32,60 @@ type vote struct {
 	term    int64
 	granted bool
 }
+
+const (
+	kvOpPut    byte = 1
+	kvOpDelete byte = 2
+)
+
+type ConfigNode struct {
+	Id       string `json:"id"`
+	IP       string `json:"ip"`
+	Port     string `json:"port"`
+	HttpPort string `json:"http_port"`
+}
+
+type ConfigFile struct {
+	Nodes []ConfigNode `json:"nodes"`
+}
+
+type NodeConfig struct {
+	NodeID             string
+	Protocol           string
+	Persistent         bool
+	ConfigJSON         string
+	ConfigFile         string
+	K                  int
+	BatchSizeLow       int
+	BatchSizeHigh      int
+	BackoffDec         int
+	ConsensusTimeout   int
+	ElectionTimeoutMin int
+	ElectionTimeoutMax int
+	BatchTimeout       int
+	HeartbeatTimeout   int
+}
+
+func (cfg NodeConfig) Validate() error {
+	if cfg.NodeID == "" {
+		return errors.New("node id is required")
+	}
+
+	switch cfg.Protocol {
+	case "rcp", "raft", "fraft":
+	default:
+		return fmt.Errorf("protocol can either be 'rcp', 'raft', or 'fraft'")
+	}
+
+	if cfg.ConfigJSON == "" && cfg.ConfigFile == "" {
+		return errors.New("config json or config file must be provided")
+	}
+
+	return nil
+}
+
 type Node struct {
-	rcppb.UnimplementedRCPServer
+	orcapb.UnimplementedOrcaServer
 
 	// Unchanged attributes, don't require mutex locking
 	Id             string `json:"id"`
@@ -43,7 +94,7 @@ type Node struct {
 	IP             string `json:"ip"`
 	NodeAddressMap map[string]string
 	ConnMap        map[string]*grpc.ClientConn
-	ClientMap      map[string]rcppb.RCPClient
+	ClientMap      map[string]orcapb.OrcaClient
 
 	inFlightMessageCount map[string]int
 
@@ -132,70 +183,45 @@ type Node struct {
 	stepdownChan chan struct{}
 }
 
-// struct to read in the config file
-type ConfigFile struct {
-	Nodes []*Node `json:"nodes"`
-}
-
 // constructor
-func NewNode(
-	thisNodeId,
-	protocol string,
-	persistent bool,
-	configString,
-	configFile string,
-	K int,
-	batchSizeLow int,
-	batchSizeHigh int,
-	backoffDec int,
-	consensusTimeout int,
-	electionTimeoutMin int,
-	electionTimeoutMax int,
-	batchTimeout int,
-	heartbeatTimeout int) (*Node, error) {
+func NewNode(cfg NodeConfig) (*Node, error) {
+	var parsedConfig ConfigFile
 
-	if configString == "" {
-		// reads config file
-		nodesJson, err := os.Open(configFile)
-		if err != nil {
-			log.Fatalf("Error with reading config JSON (%s) Provide config as command line argument --config or --config-file or put config in nodes.json: %s\n", configFile, err)
-		}
-		defer nodesJson.Close()
-
-		byteValue, err := io.ReadAll(nodesJson)
-		if err != nil {
-			log.Fatalf("Failed to read file: %s", err)
-		}
-		err = json.Unmarshal(byteValue, &config)
-		if err != nil {
-			log.Fatalf("Failed to unmarshal JSON: %s", err)
+	if cfg.ConfigJSON != "" {
+		if err := json.Unmarshal([]byte(cfg.ConfigJSON), &parsedConfig); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal config JSON from flag: %w", err)
 		}
 	} else {
-		err := json.Unmarshal([]byte(configString), &config)
+		byteValue, err := os.ReadFile(cfg.ConfigFile)
 		if err != nil {
-			log.Fatalf("Failed to unmarshal JSON from command line arg: %s", err)
+			return nil, fmt.Errorf("failed to read config file (%s): %w", cfg.ConfigFile, err)
+		}
+		if err := json.Unmarshal(byteValue, &parsedConfig); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal config file (%s): %w", cfg.ConfigFile, err)
 		}
 	}
 
-	log.Printf("K: %d, batch size: %d-%d, backoff decrement: %d, consensus timeout: %dms, election timeout: %dms-%dms, batch timeout: %dms, heartbeat timeout: %dms", K, batchSizeLow, batchSizeHigh, backoffDec, consensusTimeout, electionTimeoutMin, electionTimeoutMax, batchTimeout, heartbeatTimeout)
-	for _, node := range config.Nodes {
-		log.Printf("%s %s %s %s", node.Id, node.IP, node.Port, node.HttpPort)
+	if len(parsedConfig.Nodes) == 0 {
+		return nil, errors.New("node configuration contains no nodes")
 	}
 
-	nodes = config.Nodes
+	log.Printf("K: %d, batch size: %d-%d, backoff decrement: %d, consensus timeout: %dms, election timeout: %dms-%dms, batch timeout: %dms, heartbeat timeout: %dms", cfg.K, cfg.BatchSizeLow, cfg.BatchSizeHigh, cfg.BackoffDec, cfg.ConsensusTimeout, cfg.ElectionTimeoutMin, cfg.ElectionTimeoutMax, cfg.BatchTimeout, cfg.HeartbeatTimeout)
+	for _, nodeDef := range parsedConfig.Nodes {
+		log.Printf("%s %s %s %s", nodeDef.Id, nodeDef.IP, nodeDef.Port, nodeDef.HttpPort)
+	}
 
 	newNode := &Node{
-		Id:                 thisNodeId,
+		Id:                 cfg.NodeID,
 		currentTerm:        0,
-		K:                  K,
-		BatchSizeLow:       batchSizeLow,
-		BatchSizeHigh:      batchSizeHigh,
-		BackoffDec:         int64(backoffDec),
-		ConsensusTimeout:   time.Duration(consensusTimeout) * time.Millisecond,
-		ElectionTimeoutMin: time.Duration(electionTimeoutMin) * time.Millisecond,
-		ElectionTimeoutMax: time.Duration(electionTimeoutMax) * time.Millisecond,
-		BatchTimeout:       time.Duration(batchTimeout) * time.Millisecond,
-		HeartbeatTimeout:   time.Duration(heartbeatTimeout) * time.Millisecond,
+		K:                  cfg.K,
+		BatchSizeLow:       cfg.BatchSizeLow,
+		BatchSizeHigh:      cfg.BatchSizeHigh,
+		BackoffDec:         int64(cfg.BackoffDec),
+		ConsensusTimeout:   time.Duration(cfg.ConsensusTimeout) * time.Millisecond,
+		ElectionTimeoutMin: time.Duration(cfg.ElectionTimeoutMin) * time.Millisecond,
+		ElectionTimeoutMax: time.Duration(cfg.ElectionTimeoutMax) * time.Millisecond,
+		BatchTimeout:       time.Duration(cfg.BatchTimeout) * time.Millisecond,
+		HeartbeatTimeout:   time.Duration(cfg.HeartbeatTimeout) * time.Millisecond,
 
 		// lastApplied:           -1,
 		commitIndex: -1,
@@ -207,7 +233,7 @@ func NewNode(
 		NodeAddressMap:       make(map[string]string),
 		ConnMap:              make(map[string]*grpc.ClientConn),
 		Live:                 true,
-		ClientMap:            make(map[string]rcppb.RCPClient),
+		ClientMap:            make(map[string]orcapb.OrcaClient),
 		electionTimer:        time.NewTimer(20 * time.Minute),
 		logBufferChan:        make(chan LogWithCallbackChannel, 10000),
 		inFlightMessageCount: make(map[string]int),
@@ -222,74 +248,50 @@ func NewNode(
 		stepdownChan:              make(chan struct{}),
 	}
 
-	// if persistent {
-	// 	// Initialize data store
-	// 	dbPath := "./dbs/" + thisNodeId + ".db"
-	// 	db, dbCloseFunc, err := db.InitBoltDatabase(dbPath)
-	// 	if err != nil {
-	// 		log.Fatalf("InitDatabase(%q): %v", dbPath, err)
-	// 	}
-	// 	newNode.db = db
-	// 	newNode.DBCloseFunc = dbCloseFunc
-	// } else {
-	// 	newNode.db = db.InitMemoryDatabase()
-	// }
 	newNode.db = db.InitMemoryDatabase()
 
-	switch protocol {
+	switch cfg.Protocol {
 	case "rcp":
-		newNode.replicationQuorum = K + 1
+		newNode.replicationQuorum = cfg.K + 1
 		newNode.protocol = "rcp"
 	case "raft":
-		newNode.replicationQuorum = int(len(nodes)/2) + 1
+		newNode.replicationQuorum = int(len(parsedConfig.Nodes)/2) + 1
 		newNode.protocol = "raft"
 	case "fraft":
-		newNode.replicationQuorum = K + 1
+		newNode.replicationQuorum = cfg.K + 1
 		newNode.protocol = "fraft"
 	default:
-		log.Fatalf("Invalid protocol: %s", protocol)
+		return nil, fmt.Errorf("invalid protocol: %s", cfg.Protocol)
 	}
 
 	log.Printf("Replication Quorum size: %d", newNode.replicationQuorum)
 
 	// go through all the nodes defined in config file and map them to their gRPC ports
-	for _, node := range nodes {
-		// if current node, then assign ports to node object
-		if node.Id == thisNodeId {
-			newNode.HttpPort = node.HttpPort
-			newNode.Port = node.Port
+	for _, nodeDef := range parsedConfig.Nodes {
+		if nodeDef.Id == cfg.NodeID {
+			newNode.HttpPort = nodeDef.HttpPort
+			newNode.Port = nodeDef.Port
 		}
-		newNode.NodeAddressMap[node.Id] = fmt.Sprintf("%s:%s", node.IP, node.Port)
-		newNode.inFlightMessageCount[node.Id] = 0
-		// newNode.serverStatusMap.Store(node.Id, true)
-		// newNode.reachableNodes[node.Id] = struct{}{}
-		// newNode.failedAppendEntries.Store(thisNodeId, 0)
-		// newNode.delays.Store(node.Id, int64(0))
+		newNode.NodeAddressMap[nodeDef.Id] = fmt.Sprintf("%s:%s", nodeDef.IP, nodeDef.Port)
+		newNode.inFlightMessageCount[nodeDef.Id] = 0
 	}
 
-	// initialize current alive to number of nodes in the config file
 	newNode.N = len(newNode.NodeAddressMap)
-	if newNode.NodeAddressMap[thisNodeId] == "" {
-		log.Fatalf("No port specified for ID: %s in config JSON", thisNodeId)
+	if newNode.NodeAddressMap[cfg.NodeID] == "" {
+		return nil, fmt.Errorf("no port specified for ID: %s in config JSON", cfg.NodeID)
 	}
 
-	// log.Println("Reset election timer")
 	newNode.resetElectionTimer()
 
 	return newNode, nil
 }
 
-func (node *Node) Start() {
+func (node *Node) Start() error {
 
-	// starts HTTP server used by clients to interact with server
-	// go node.startHttpServer()
-	// time.Sleep(1 * time.Second)
-
-	// initialize next index (log of index to send to a node) for every node to 0
-	// node.initNextIndex()
-
-	// establish gRPC connections with ohter nodes
-	node.establishConns()
+	// establish gRPC connections with other nodes
+	if err := node.establishConns(); err != nil {
+		return err
+	}
 
 	for !node.isReady {
 		time.Sleep(10 * time.Millisecond)
@@ -308,26 +310,7 @@ func (node *Node) Start() {
 
 	// go node.callbacker()
 
-	for {
-		printMenu()
-		var input string
-		fmt.Scan(&input)
-
-		switch input {
-		case "2":
-			node.db.PrintAllLogs()
-
-		// case "3":
-		// 	err := node.db.PrintAllLogsUnordered()
-		// 	if err != nil {
-		// 		log.Printf("Error printing all logs: %v\n", err)
-		// 	}
-		case "4":
-			node.printState()
-		default:
-			fmt.Println("Invalid option. Please choose again.")
-		}
-	}
+	return nil
 }
 
 // This function assume mutex is already locked
@@ -358,11 +341,13 @@ func (node *Node) HandleStore(key string, bucket string, value string) (string, 
 
 	go func() {
 		node.logBufferChan <- LogWithCallbackChannel{
-			LogEntry: &rcppb.LogEntry{
-				LogType: rcppb.LogType_STORE,
-				Key:     key,
-				Value:   value,
-				Bucket:  bucket,
+			LogEntry: &orcapb.LogEntry{
+				LogType: orcapb.LogType_OPERATION,
+				Payload: marshalKVOperation(kvOpPut, &kvpb.StoreRequest{
+					Key:    key,
+					Value:  value,
+					Bucket: bucket,
+				}),
 			},
 			CallbackChannel: callbackCh,
 		}
@@ -397,10 +382,12 @@ func (node *Node) HandleDelete(key string, bucket string) (string, error) {
 
 	go func() {
 		node.logBufferChan <- LogWithCallbackChannel{
-			LogEntry: &rcppb.LogEntry{
-				LogType: rcppb.LogType_DELETE,
-				Key:     key,
-				Bucket:  bucket,
+			LogEntry: &orcapb.LogEntry{
+				LogType: orcapb.LogType_OPERATION,
+				Payload: marshalKVOperation(kvOpDelete, &kvpb.DeleteRequest{
+					Key:    key,
+					Bucket: bucket,
+				}),
 			},
 			CallbackChannel: callbackCh,
 		}
@@ -414,6 +401,21 @@ func (node *Node) HandleDelete(key string, bucket string) (string, error) {
 		log.Printf("TIMED OUT Delete key: %s, bucket: %s", key, bucket)
 		return "", ErrTimeOut
 	}
+}
+
+func marshalKVOperation(op byte, msg proto.Message) []byte {
+	payload, err := proto.Marshal(msg)
+	if err != nil {
+		log.Panicf("failed to marshal kv operation: %v", err)
+	}
+	return append([]byte{op}, payload...)
+}
+
+func decodeKVOperation(payload []byte) (byte, []byte) {
+	if len(payload) == 0 {
+		return 0, nil
+	}
+	return payload[0], payload[1:]
 }
 
 // This function assume mutex is already locked
@@ -453,12 +455,12 @@ func (node *Node) BecomeLeaderLocked() {
 }
 
 // This function assume mutex is already locked
-func (node *Node) AppendLogLocked(logEntry *rcppb.LogEntry) int64 {
-	if logEntry.LogType == rcppb.LogType_FAILURE {
+func (node *Node) AppendLogLocked(logEntry *orcapb.LogEntry) int64 {
+	if logEntry.LogType == orcapb.LogType_FAILURE {
 		node.pendingFailureSet[logEntry.NodeId] = struct{}{}
 	}
 
-	if logEntry.LogType == rcppb.LogType_RECOVERY {
+	if logEntry.LogType == orcapb.LogType_RECOVERY {
 		delete(node.failedSet, logEntry.NodeId)
 		node.pendingRecoverySet[logEntry.NodeId] = struct{}{}
 	}
@@ -472,25 +474,25 @@ func (node *Node) AppendLogLocked(logEntry *rcppb.LogEntry) int64 {
 }
 
 // This function assume mutex is already locked
-func (node *Node) InsertLogLocked(logEntry *rcppb.LogEntry, idx int64) {
+func (node *Node) InsertLogLocked(logEntry *orcapb.LogEntry, idx int64) {
 	existingEntry, err := node.db.GetLogAtIndex(idx)
 
 	if err == nil {
-		if existingEntry.LogType == rcppb.LogType_FAILURE {
+		if existingEntry.LogType == orcapb.LogType_FAILURE {
 			delete(node.pendingFailureSet, existingEntry.NodeId)
 		}
 
-		if existingEntry.LogType == rcppb.LogType_RECOVERY {
+		if existingEntry.LogType == orcapb.LogType_RECOVERY {
 			delete(node.pendingRecoverySet, existingEntry.NodeId)
 			node.failedSet[logEntry.NodeId] = struct{}{}
 		}
 	}
 
-	if logEntry.LogType == rcppb.LogType_FAILURE {
+	if logEntry.LogType == orcapb.LogType_FAILURE {
 		node.pendingFailureSet[logEntry.NodeId] = struct{}{}
 	}
 
-	if logEntry.LogType == rcppb.LogType_RECOVERY {
+	if logEntry.LogType == orcapb.LogType_RECOVERY {
 		node.pendingRecoverySet[logEntry.NodeId] = struct{}{}
 	}
 
@@ -508,7 +510,7 @@ func (node *Node) requestVotes() {
 
 	electionQuorum := node.N - node.K
 	if node.protocol == "raft" {
-		electionQuorum = (len(nodes) / 2) + 1
+		electionQuorum = (node.N / 2) + 1
 	} else if node.protocol == "rcp" {
 		electionQuorum = electionQuorum - len(node.failedSet) - len(node.pendingRecoverySet)
 	}
@@ -588,7 +590,7 @@ func (node *Node) requestVotes() {
 // 	}
 // }
 
-func (node *Node) sendRequestVote(client rcppb.RCPClient, ctx context.Context, term int64, votesChan chan vote, nodeId string) {
+func (node *Node) sendRequestVote(client orcapb.OrcaClient, ctx context.Context, term int64, votesChan chan vote, nodeId string) {
 	log.Printf("Sending RequestVote to %s\n", nodeId)
 
 	// delayRaw, ok := node.delays.Load(nodeId)
@@ -598,7 +600,7 @@ func (node *Node) sendRequestVote(client rcppb.RCPClient, ctx context.Context, t
 	// } else {
 	// 	delay = delayRaw.(int64)
 	// }
-	resp, err := client.RequestVote(context.Background(), &rcppb.RequestVoteReq{
+	resp, err := client.RequestVote(context.Background(), &orcapb.RequestVoteRequest{
 		Term:         term,
 		CandidateId:  node.Id,
 		LastLogIndex: node.GetLastIndexLocked(),

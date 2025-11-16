@@ -2,19 +2,18 @@ package node
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
-	"rcp/constants"
-	"rcp/rcppb"
+	rcppb "rcp/grpc/orcapb"
 	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.AppendEntriesReq) (*rcppb.AppendEntriesResponse, error) {
+func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.AppendEntriesRequest) (*rcppb.AppendEntriesResponse, error) {
 	if !node.Live {
 		return &rcppb.AppendEntriesResponse{
 			Term:    node.currentTerm,
@@ -96,7 +95,7 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 }
 
 // This function assume mutex is already locked
-func (node *Node) insertLogsLocked(appendEntryReq *rcppb.AppendEntriesReq) error {
+func (node *Node) insertLogsLocked(appendEntryReq *rcppb.AppendEntriesRequest) error {
 	if len(appendEntryReq.Entries) == 0 {
 		return nil
 	}
@@ -149,7 +148,7 @@ func (node *Node) insertLogsLocked(appendEntryReq *rcppb.AppendEntriesReq) error
 	return nil
 }
 
-func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.RequestVoteReq) (*rcppb.RequestVoteResponse, error) {
+func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.RequestVoteRequest) (*rcppb.RequestVoteResponse, error) {
 	if !node.Live {
 		log.Printf("Received RequestVote: %s Term: %d I'm not alive", requestVoteReq.CandidateId, requestVoteReq.Term)
 		return &rcppb.RequestVoteResponse{
@@ -248,154 +247,11 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 // 	return &wrapperspb.BoolValue{Value: true}, nil
 // }
 
-func (node *Node) Healthz(ctx context.Context, req *rcppb.HealthzRequest) (*wrapperspb.BoolValue, error) {
+func (node *Node) Health(ctx context.Context, req *emptypb.Empty) (*wrapperspb.BoolValue, error) {
 	return &wrapperspb.BoolValue{Value: true}, nil
 }
 
-func (node *Node) Store(ctx context.Context, req *rcppb.StoreRequest) (*rcppb.ClientResponse, error) {
-	if !node.Live {
-		return &rcppb.ClientResponse{
-			Success: false,
-			Error:   rcppb.ErrorType_NOT_ALIVE,
-		}, nil
-	}
-
-	if req.Key == "" {
-		return &rcppb.ClientResponse{
-			Success: false,
-			Error:   rcppb.ErrorType_BAD_REQUEST,
-			Value:   "missing key",
-		}, nil
-	}
-
-	if req.Value == "" {
-		return &rcppb.ClientResponse{
-			Success: false,
-			Error:   rcppb.ErrorType_BAD_REQUEST,
-			Value:   "missing value",
-		}, nil
-	}
-
-	if req.Bucket == "" {
-		req.Bucket = constants.DefaultBucket
-	}
-
-	data, err := node.HandleStore(req.Key, req.Bucket, req.Value)
-
-	if err != nil {
-		// log.Printf("Store failed: %v", err)
-
-		if errors.Is(err, ErrNotLeader) {
-			return &rcppb.ClientResponse{
-				Success: false,
-				Error:   rcppb.ErrorType_NOT_LEADER,
-				Value:   data,
-			}, nil
-		}
-
-		if errors.Is(err, ErrTimeOut) {
-			return &rcppb.ClientResponse{
-				Success: false,
-				Error:   rcppb.ErrorType_TIMEOUT,
-			}, nil
-		}
-
-		return &rcppb.ClientResponse{
-			Success: false,
-			Error:   rcppb.ErrorType_UNEXPECTED,
-		}, nil
-	}
-
-	return &rcppb.ClientResponse{
-		Success: true,
-	}, nil
-}
-
-func (node *Node) Get(ctx context.Context, req *rcppb.GetRequest) (*rcppb.ClientResponse, error) {
-	if !node.Live {
-		return &rcppb.ClientResponse{
-			Success: false,
-			Error:   rcppb.ErrorType_NOT_ALIVE,
-		}, nil
-	}
-
-	if req.Key == "" {
-		return &rcppb.ClientResponse{
-			Success: false,
-			Error:   rcppb.ErrorType_BAD_REQUEST,
-		}, nil
-	}
-
-	if req.Bucket == "" {
-		req.Bucket = constants.DefaultBucket
-	}
-
-	data, err := node.HandleGet(req.Key, req.Bucket)
-
-	if err != nil {
-		return &rcppb.ClientResponse{
-			Success: false,
-			Error:   rcppb.ErrorType_NOT_FOUND,
-		}, nil
-	}
-
-	return &rcppb.ClientResponse{
-		Success: true,
-		Value:   data,
-	}, nil
-}
-
-func (node *Node) Delete(ctx context.Context, req *rcppb.DeleteRequest) (*rcppb.ClientResponse, error) {
-	if !node.Live {
-		return &rcppb.ClientResponse{
-			Success: false,
-			Error:   rcppb.ErrorType_NOT_ALIVE,
-		}, nil
-	}
-
-	if req.Key == "" {
-		return &rcppb.ClientResponse{
-			Success: false,
-			Error:   rcppb.ErrorType_BAD_REQUEST,
-		}, nil
-	}
-
-	if req.Bucket == "" {
-		req.Bucket = constants.DefaultBucket
-	}
-
-	data, err := node.HandleDelete(req.Key, req.Bucket)
-
-	if err != nil {
-		log.Printf("Delete failed: %v", err)
-
-		if errors.Is(err, ErrNotLeader) {
-			return &rcppb.ClientResponse{
-				Success: false,
-				Error:   rcppb.ErrorType_NOT_LEADER,
-				Value:   data,
-			}, nil
-		}
-
-		if errors.Is(err, ErrTimeOut) {
-			return &rcppb.ClientResponse{
-				Success: false,
-				Error:   rcppb.ErrorType_TIMEOUT,
-			}, nil
-		}
-
-		return &rcppb.ClientResponse{
-			Success: false,
-			Error:   rcppb.ErrorType_UNEXPECTED,
-		}, nil
-	}
-
-	return &rcppb.ClientResponse{
-		Success: true,
-	}, nil
-}
-
-func (node *Node) CauseFailure(ctx context.Context, req *rcppb.CauseFailureRequest) (*rcppb.ClientResponse, error) {
+func (node *Node) CauseFailure(ctx context.Context, req *rcppb.CauseFailureRequest) (*wrapperspb.BoolValue, error) {
 	log.Printf("Got cause-failure of type %s", req.Type)
 
 	node.mutex.Lock()
@@ -404,82 +260,42 @@ func (node *Node) CauseFailure(ctx context.Context, req *rcppb.CauseFailureReque
 	switch req.Type {
 	case rcppb.FailureType_REVIVE:
 		if node.Live {
-			return &rcppb.ClientResponse{
-				Success: false,
-				Error:   rcppb.ErrorType_UNEXPECTED,
-				Value:   "still alive",
-			}, nil
-		} else {
-			node.Live = true
-			return &rcppb.ClientResponse{
-				Success: true,
-			}, nil
+			return nil, status.Error(codes.FailedPrecondition, "still alive")
 		}
+		node.Live = true
+		return &wrapperspb.BoolValue{Value: true}, nil
 
 	case rcppb.FailureType_LEADER:
-		if node.Live {
-			if node.isLeader {
-				node.Live = false
-				node.StepDownLocked()
-				return &rcppb.ClientResponse{
-					Success: true,
-				}, nil
-			} else {
-				// Node is not the leader, redirect to the leader
-				return &rcppb.ClientResponse{
-					Success: false,
-					Error:   rcppb.ErrorType_NOT_LEADER,
-					Value:   node.votedFor,
-				}, nil
-			}
-		} else {
-			// Node is not alive, the node doesn't know the correct leader
-			return &rcppb.ClientResponse{
-				Success: false,
-				Error:   rcppb.ErrorType_NOT_ALIVE,
-			}, nil
+		if !node.Live {
+			return nil, status.Error(codes.Unavailable, "not alive")
 		}
+		if !node.isLeader {
+			return nil, status.Error(codes.PermissionDenied, node.votedFor)
+		}
+		node.Live = false
+		node.StepDownLocked()
+		return &wrapperspb.BoolValue{Value: true}, nil
 
 	case rcppb.FailureType_REPLICA:
 		if node.isLeader {
-			return &rcppb.ClientResponse{
-				Success: false,
-				Error:   rcppb.ErrorType_UNEXPECTED,
-				Value:   "is leader",
-			}, nil
-		} else {
-			if node.Live {
-				node.Live = false
-				return &rcppb.ClientResponse{
-					Success: true,
-				}, nil
-			} else {
-				return &rcppb.ClientResponse{
-					Success: false,
-					Error:   rcppb.ErrorType_NOT_ALIVE,
-				}, nil
-			}
+			return nil, status.Error(codes.FailedPrecondition, "is leader")
 		}
+		if !node.Live {
+			return nil, status.Error(codes.Unavailable, "not alive")
+		}
+		node.Live = false
+		return &wrapperspb.BoolValue{Value: true}, nil
 
 	case rcppb.FailureType_RANDOM:
-		if node.Live {
-			node.Live = false
-			node.StepDownLocked()
-			return &rcppb.ClientResponse{
-				Success: true,
-			}, nil
-		} else {
-			return &rcppb.ClientResponse{
-				Success: false,
-				Error:   rcppb.ErrorType_NOT_ALIVE,
-			}, nil
+		if !node.Live {
+			return nil, status.Error(codes.Unavailable, "not alive")
 		}
+		node.Live = false
+		node.StepDownLocked()
+		return &wrapperspb.BoolValue{Value: true}, nil
 
 	default:
-		return &rcppb.ClientResponse{
-			Success: false,
-			Error:   rcppb.ErrorType_BAD_REQUEST,
-		}, nil
+		return nil, status.Error(codes.InvalidArgument, "unknown failure type")
 	}
 }
 

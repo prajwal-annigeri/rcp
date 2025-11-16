@@ -2,7 +2,10 @@ package node
 
 import (
 	"log"
-	"rcp/rcppb"
+	"rcp/grpc/kvpb"
+	"rcp/grpc/orcapb"
+
+	"google.golang.org/protobuf/proto"
 )
 
 // // doCallbacks informs the client that put this log entry about its commit
@@ -41,16 +44,32 @@ func (node *Node) executeUntilLocked(endIndex int64) error {
 		}
 
 		switch logEntry.LogType {
-		case rcppb.LogType_STORE:
-			node.db.Store(logEntry.Key, logEntry.Bucket, logEntry.Value)
+		case orcapb.LogType_OPERATION:
+			opType, payload := decodeKVOperation(logEntry.GetPayload())
+			if payload == nil {
+				log.Panicf("operation log missing payload at index %d", node.execIndex+1)
+			}
+			switch opType {
+			case kvOpPut:
+				var store kvpb.StoreRequest
+				if err := proto.Unmarshal(payload, &store); err != nil {
+					log.Panicf("failed to decode store payload: %v", err)
+				}
+				node.db.Store(store.GetKey(), store.GetBucket(), store.GetValue())
+			case kvOpDelete:
+				var del kvpb.DeleteRequest
+				if err := proto.Unmarshal(payload, &del); err != nil {
+					log.Panicf("failed to decode delete payload: %v", err)
+				}
+				node.db.Delete(del.GetKey(), del.GetBucket())
+			default:
+				log.Panicf("unhandled operation type %d", opType)
+			}
 			node.doCallback(node.execIndex + 1)
-		case rcppb.LogType_DELETE:
-			node.db.Delete(logEntry.Key, logEntry.Bucket)
-			node.doCallback(node.execIndex + 1)
-		case rcppb.LogType_FAILURE:
+		case orcapb.LogType_FAILURE:
 			delete(node.pendingFailureSet, logEntry.NodeId)
 			node.failedSet[logEntry.NodeId] = struct{}{}
-		case rcppb.LogType_RECOVERY:
+		case orcapb.LogType_RECOVERY:
 			delete(node.pendingRecoverySet, logEntry.NodeId)
 		}
 

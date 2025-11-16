@@ -9,14 +9,17 @@ import (
 	"log"
 	"math/rand"
 	"os"
-	"rcp/rcppb"
+	"rcp/grpc/orcapb"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type Config struct {
@@ -66,7 +69,7 @@ var (
 	configFile = flag.String("config-file", "./nodes.json", "node config JSON filename")
 
 	contactNode   string
-	grpcClientMap map[string]rcppb.RCPClient
+	grpcClientMap map[string]orcapb.OrcaClient
 	killedNodes   map[string]struct{}
 	failures      FailureList
 	config        Config
@@ -76,7 +79,7 @@ func main() {
 	flag.Var(&failures, "failures", "List of failures in time:type format, e.g., 5:leader,10:non-leader,15:random,20:revive")
 	flag.Parse()
 
-	grpcClientMap = make(map[string]rcppb.RCPClient)
+	grpcClientMap = make(map[string]orcapb.OrcaClient)
 	killedNodes = map[string]struct{}{}
 
 	configJSON, err := os.Open(*configFile)
@@ -106,10 +109,10 @@ func main() {
 			log.Fatalf("Failed to connect to %s", node.ID)
 		}
 
-		client := rcppb.NewRCPClient(conn)
+		client := orcapb.NewOrcaClient(conn)
 		grpcClientMap[node.ID] = client
 
-		_, err = grpcClientMap[node.ID].Healthz(context.Background(), &rcppb.HealthzRequest{})
+		_, err = grpcClientMap[node.ID].Health(context.Background(), &emptypb.Empty{})
 		if err != nil {
 			log.Fatalf("Failed to connect to %s", node.ID)
 		}
@@ -177,23 +180,23 @@ func causeFailure(failureType string, waitInSeconds int64, wg *sync.WaitGroup) {
 			}
 		}
 
-		var req *rcppb.CauseFailureRequest
+		var req *orcapb.CauseFailureRequest
 		switch failureType {
 		case "revive":
-			req = &rcppb.CauseFailureRequest{
-				Type: rcppb.FailureType_REVIVE,
+			req = &orcapb.CauseFailureRequest{
+				Type: orcapb.FailureType_REVIVE,
 			}
 		case "random":
-			req = &rcppb.CauseFailureRequest{
-				Type: rcppb.FailureType_RANDOM,
+			req = &orcapb.CauseFailureRequest{
+				Type: orcapb.FailureType_RANDOM,
 			}
 		case "leader":
-			req = &rcppb.CauseFailureRequest{
-				Type: rcppb.FailureType_LEADER,
+			req = &orcapb.CauseFailureRequest{
+				Type: orcapb.FailureType_LEADER,
 			}
 		case "non-leader":
-			req = &rcppb.CauseFailureRequest{
-				Type: rcppb.FailureType_REPLICA,
+			req = &orcapb.CauseFailureRequest{
+				Type: orcapb.FailureType_REPLICA,
 			}
 		}
 
@@ -201,10 +204,16 @@ func causeFailure(failureType string, waitInSeconds int64, wg *sync.WaitGroup) {
 		res, err := client.CauseFailure(context.Background(), req)
 
 		if err != nil {
+			st, ok := status.FromError(err)
+			if ok && st.Code() == codes.PermissionDenied {
+				contactServer = st.Message()
+				continue
+			}
+
 			log.Panicf("Unexpected error trying to cause failure %s at %d seconds on %s: %v", failureType, waitInSeconds, contactServer, err)
 		}
 
-		if res.Success {
+		if res.GetValue() {
 			log.Printf("Caused failure %s at %d seconds on %s", failureType, waitInSeconds, contactServer)
 
 			if failureType == "revive" {
@@ -214,17 +223,10 @@ func causeFailure(failureType string, waitInSeconds int64, wg *sync.WaitGroup) {
 			}
 
 			return
-		} else {
-			// Redirected to a leader
-			if res.Error == rcppb.ErrorType_NOT_LEADER {
-				contactServer = res.Value
-				continue
-			}
-
-			// Try random node
-			log.Printf("Tried to cause failure %s at %d seconds on %s", failureType, waitInSeconds, contactServer)
-			contactServer = ""
-			continue
 		}
+
+		log.Printf("Tried to cause failure %s at %d seconds on %s", failureType, waitInSeconds, contactServer)
+		contactServer = ""
+		continue
 	}
 }

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 	"rcp/constants"
-	"rcp/rcppb"
+	"rcp/grpc/orcapb"
 
 	bolt "go.etcd.io/bbolt"
 )
@@ -96,22 +96,22 @@ func (d *BoltDB) Delete(key string, bucket string) error {
 }
 
 // AppendLog implements Database.
-func (d *BoltDB) AppendLog(log *rcppb.LogEntry) int64 {
+func (d *BoltDB) AppendLog(log *orcapb.LogEntry) int64 {
 	panic("unimplemented")
 }
 
 // PutLogAtIndex implements Database.
-func (d *BoltDB) PutLogAtIndex(index int64, log *rcppb.LogEntry) error {
+func (d *BoltDB) PutLogAtIndex(index int64, log *orcapb.LogEntry) error {
 	panic("unimplemented")
 }
 
 // GetLogAtIndex implements Database.
-func (d *BoltDB) GetLogAtIndex(index int64) (*rcppb.LogEntry, error) {
+func (d *BoltDB) GetLogAtIndex(index int64) (*orcapb.LogEntry, error) {
 	panic("unimplemented")
 }
 
 // GetLogsFromIndex implements Database.
-func (d *BoltDB) GetLogsFromIndex(index int64) ([]*rcppb.LogEntry, error) {
+func (d *BoltDB) GetLogsFromIndex(index int64) ([]*orcapb.LogEntry, error) {
 	panic("unimplemented")
 }
 

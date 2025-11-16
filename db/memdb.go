@@ -2,17 +2,17 @@ package db
 
 import (
 	"fmt"
-	"rcp/rcppb"
+	"rcp/grpc/orcapb"
 )
 
 type MemDB struct {
-	logs []*rcppb.LogEntry
+	logs []*orcapb.LogEntry
 	kv   map[string]string
 }
 
 func InitMemoryDatabase() (db *MemDB) {
 	return &MemDB{
-		logs: []*rcppb.LogEntry{},
+		logs: []*orcapb.LogEntry{},
 		kv:   make(map[string]string),
 	}
 }
@@ -40,13 +40,13 @@ func (d *MemDB) Delete(key string, bucket string) error {
 }
 
 // AppendLog implements Database.
-func (d *MemDB) AppendLog(log *rcppb.LogEntry) (int64, error) {
+func (d *MemDB) AppendLog(log *orcapb.LogEntry) (int64, error) {
 	d.logs = append(d.logs, log)
 	return int64(len(d.logs) - 1), nil
 }
 
 // PutLogAtIndex implements Database.
-func (d *MemDB) PutLogAtIndex(index int64, log *rcppb.LogEntry) error {
+func (d *MemDB) PutLogAtIndex(index int64, log *orcapb.LogEntry) error {
 	if len(d.logs) > int(index) {
 		// Log already exists
 		d.logs[index] = log
@@ -62,7 +62,7 @@ func (d *MemDB) PutLogAtIndex(index int64, log *rcppb.LogEntry) error {
 }
 
 // GetLogAtIndex implements Database.
-func (d *MemDB) GetLogAtIndex(index int64) (*rcppb.LogEntry, error) {
+func (d *MemDB) GetLogAtIndex(index int64) (*orcapb.LogEntry, error) {
 	if len(d.logs) <= int(index) {
 		return nil, ErrNotFound
 	}
@@ -71,9 +71,9 @@ func (d *MemDB) GetLogAtIndex(index int64) (*rcppb.LogEntry, error) {
 
 // GetLogsFromIndex implements Database.
 // Returns empty array if no logs from and after index
-func (d *MemDB) GetLogsFromIndex(index int64, maxLogs int) ([]*rcppb.LogEntry, error) {
+func (d *MemDB) GetLogsFromIndex(index int64, maxLogs int) ([]*orcapb.LogEntry, error) {
 	if len(d.logs) < int(index) {
-		return []*rcppb.LogEntry{}, nil
+		return []*orcapb.LogEntry{}, nil
 	}
 
 	end := min(len(d.logs), int(index)+maxLogs)
