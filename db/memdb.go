@@ -83,21 +83,6 @@ func (d *MemDB) GetLogsFromIndex(index int64, maxLogs int) ([]*orcapb.LogEntry, 
 // PrintAllLogs implements Database.
 func (d *MemDB) PrintAllLogs() error {
 	panic("unimplemented")
-	// 	for i := int64(0); i <= node.lastIndex; i++ {
-	// 		logEntryRaw, ok := d.logs.Load(i)
-	// 		if !ok {
-	// 			log.Printf("No log at index %d", i)
-	// 			continue
-	// 		}
-
-	// 		logEntry := logEntryRaw.(*rcppb.LogEntry)
-	// 		if logEntry.Key != "" {
-	// 			log.Printf("%d. Key: %s Bucket: %s\n", i+1, logEntry.Key, logEntry.Bucket)
-	// 		} else {
-	// 			log.Printf("%d. %s %s", i+1, logEntry.LogType, logEntry.NodeId)
-	// 		}
-
-	// }
 }
 
 // PrintAllLogsUnordered implements Database.

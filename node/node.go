@@ -129,17 +129,10 @@ type Node struct {
 	votedFor string
 
 	// Index upto where logs have been executed (inclusive)
-	execIndex int64
-	// lastApplied int64
-	// lastIndex       int64
-	// lastTerm        int64
+	execIndex     int64
 	DBCloseFunc   func() error
 	isCandidate   bool
 	electionTimer *time.Timer
-	// currAlive       int
-	// serverStatusMap sync.Map
-	// beginTime                      time.Time
-	// possibleFailureOrRecoveryIndex sync.Map
 
 	/// The below hash sets are used to prevent duplicate failure/recovery logs from being inserted.
 	//
@@ -155,20 +148,7 @@ type Node struct {
 	pendingRecoverySet map[string]struct{}
 	failedSet          map[string]struct{}
 
-	// failureLogWaitingSet  map[string]struct{}
-	// recoveryLogWaitingSet map[string]struct{}
-	// failureSetLock        sync.Mutex
-	// recoverySetLock       sync.Mutex
-
-	// reachable nodes set to simulate partitions
-	// reachableNodes   map[string]struct{}
-	// reachableSetLock sync.RWMutex
-
 	indexToCallbackChannelMap map[int64]chan CallbackReply
-
-	// failedAppendEntries sync.Map
-	// replicatedCount     sync.Map
-	// delays sync.Map
 
 	// Number of nodes with which initial connection has been established
 	initialConnectionEstablished atomic.Int64
@@ -293,18 +273,11 @@ func (node *Node) Start() error {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	log.Printf("ALL CONNECTIONS ESTABLISHED")
-	// start goroutine that monitors the election timer
+	log.Printf("All cconnections established")
+
 	go node.monitorElectionTimer()
 
-	// start goroutine that sends heartbeats/AppendEntries
-	// go node.sendHeartbeats()
 	go node.startReceiverLoop(node.logBufferChan)
-
-	//start executor goroutine which applies logs to state machine
-	// go node.executor()
-
-	// go node.callbacker()
 
 	return nil
 }
@@ -575,28 +548,14 @@ func (node *Node) requestVotes() {
 	cancel()
 }
 
-// func (node *Node) initNextIndex() {
-// 	for _, otherNode := range nodes {
-// 		node.nextIndex.Store(otherNode.Id, node.lastIndex+1)
-// 	}
-// }
-
 func (node *Node) sendRequestVote(client orcapb.OrcaClient, ctx context.Context, term int64, votesChan chan vote, nodeId string) {
 	log.Printf("Sending RequestVote to %s\n", nodeId)
 
-	// delayRaw, ok := node.delays.Load(nodeId)
-	// var delay int64
-	// if !ok {
-	// 	delay = 0
-	// } else {
-	// 	delay = delayRaw.(int64)
-	// }
 	resp, err := client.RequestVote(context.Background(), &orcapb.RequestVoteRequest{
 		Term:         term,
 		CandidateId:  node.Id,
 		LastLogIndex: node.GetLastIndexLocked(),
 		LastLogTerm:  node.GetLastTermLocked(),
-		// Delay:        int64(delay),
 	})
 
 	log.Printf("Resp from %s: %v", nodeId, resp)
