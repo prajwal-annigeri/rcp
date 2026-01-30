@@ -50,8 +50,7 @@ type NodeConfig struct {
 	ConfigJSON         string
 	ConfigFile         string
 	K                  int
-	BatchSizeLow       int
-	BatchSizeHigh      int
+	BatchSize          int
 	BackoffDec         int
 	ConsensusTimeout   int
 	ElectionTimeoutMin int
@@ -96,9 +95,8 @@ type Node struct {
 	replicationQuorum int
 	protocol          string
 
-	BatchSizeLow  int
-	BatchSizeHigh int
-	BackoffDec    int64
+	BatchSize  int
+	BackoffDec int64
 
 	ConsensusTimeout   time.Duration
 	ElectionTimeoutMin time.Duration
@@ -179,7 +177,7 @@ func NewNode(cfg NodeConfig) (*Node, error) {
 		return nil, errors.New("node configuration contains no nodes")
 	}
 
-	log.Printf("K: %d, batch size: %d-%d, backoff decrement: %d, consensus timeout: %dms, election timeout: %dms-%dms, heartbeat timeout: %dms", cfg.K, cfg.BatchSizeLow, cfg.BatchSizeHigh, cfg.BackoffDec, cfg.ConsensusTimeout, cfg.ElectionTimeoutMin, cfg.ElectionTimeoutMax, cfg.HeartbeatTimeout)
+	log.Printf("K: %d, batch size: %d, backoff decrement: %d, consensus timeout: %dms, election timeout: %dms-%dms, heartbeat timeout: %dms", cfg.K, cfg.BatchSize, cfg.BackoffDec, cfg.ConsensusTimeout, cfg.ElectionTimeoutMin, cfg.ElectionTimeoutMax, cfg.HeartbeatTimeout)
 	for _, nodeDef := range parsedConfig.Nodes {
 		log.Printf("%s %s %s", nodeDef.Id, nodeDef.IP, nodeDef.Port)
 	}
@@ -188,8 +186,7 @@ func NewNode(cfg NodeConfig) (*Node, error) {
 		Id:                 cfg.NodeID,
 		currentTerm:        0,
 		K:                  cfg.K,
-		BatchSizeLow:       cfg.BatchSizeLow,
-		BatchSizeHigh:      cfg.BatchSizeHigh,
+		BatchSize:          cfg.BatchSize,
 		BackoffDec:         int64(cfg.BackoffDec),
 		ConsensusTimeout:   time.Duration(cfg.ConsensusTimeout) * time.Millisecond,
 		ElectionTimeoutMin: time.Duration(cfg.ElectionTimeoutMin) * time.Millisecond,

@@ -20,8 +20,7 @@ Example:
 protocol=rcp
 persistent=false
 k=2
-batch_size_low=100
-batch_size_high=200
+batch_size=200
 backoff_decrement=200
 consensus_timeout_ms=1000
 election_timeout_min_ms=500

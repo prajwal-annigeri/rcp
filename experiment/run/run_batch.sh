@@ -32,16 +32,14 @@ for client in "${clients[@]}"; do
     sleep 5
 
     # Strategy A
-    batch_low=$(( client ))
-    batch_high=$(( client ))
+    batch_size=$(( client ))
 
     yes "" | bash run.sh \
         --protocol $PROTOCOL \
         --K $K \
-        --batch-low $batch_low \
-        --batch-high $batch_high \
+        --batch-size $batch_size \
         --client $client \
-        --backoff-dec $batch_high \
+        --backoff-dec $batch_size \
         --ct $T_CONSENSUS \
         --et-min $T_ELECTION_MIN \
         --et-max $T_ELECTION_MAX \
@@ -51,16 +49,14 @@ for client in "${clients[@]}"; do
         --failure $FAILURE
 
     # Strategy B
-    batch_low=$(( client ))
-    batch_high=$(( client * 2 ))
+    batch_size=$(( client * 2 ))
 
     yes "" | bash run.sh \
         --protocol $PROTOCOL \
         --K $K \
-        --batch-low $batch_low \
-        --batch-high $batch_high \
+        --batch-size $batch_size \
         --client $client \
-        --backoff-dec $batch_high \
+        --backoff-dec $batch_size \
         --ct $T_CONSENSUS \
         --et-min $T_ELECTION_MIN \
         --et-max $T_ELECTION_MAX \
@@ -75,16 +71,14 @@ for client in "${clients[@]}"; do
     fi
 
     # Strategy C
-    batch_low=$(( client / 2 ))
-    batch_high=$(( client ))
+    batch_size=$(( client ))
 
     yes "" | bash run.sh \
         --protocol $PROTOCOL \
         --K $K \
-        --batch-low $batch_low \
-        --batch-high $batch_high \
+        --batch-size $batch_size \
         --client $client \
-        --backoff-dec $batch_high \
+        --backoff-dec $batch_size \
         --ct $T_CONSENSUS \
         --et-min $T_ELECTION_MIN \
         --et-max $T_ELECTION_MAX \
@@ -94,16 +88,14 @@ for client in "${clients[@]}"; do
         --failure $FAILURE
 
     # Strategy D
-    batch_low=$(( client / 2 ))
-    batch_high=$(( client * 2 ))
+    batch_size=$(( client * 2 ))
 
     yes "" | bash run.sh \
         --protocol $PROTOCOL \
         --K $K \
-        --batch-low $batch_low \
-        --batch-high $batch_high \
+        --batch-size $batch_size \
         --client $client \
-        --backoff-dec $batch_high \
+        --backoff-dec $batch_size \
         --ct $T_CONSENSUS \
         --et-min $T_ELECTION_MIN \
         --et-max $T_ELECTION_MAX \

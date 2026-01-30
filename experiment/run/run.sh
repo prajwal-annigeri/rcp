@@ -9,8 +9,7 @@ USER="ec2-user"
 # Default values
 PROTOCOL="rcp"
 K=2
-BATCH_LOW=100
-BATCH_HIGH=200
+BATCH_SIZE=200
 BACKOFF_DEC=100
 TIMEOUT_CONSENSUS=1000
 TIMEOUT_ELECTION_MIN=500
@@ -36,12 +35,8 @@ while [[ $# -gt 0 ]]; do
       K="$2"
       shift 2
       ;;
-    --batch-low)
-      BATCH_LOW="$2"
-      shift 2
-      ;;
-    --batch-high)
-      BATCH_HIGH="$2"
+    --batch-size)
+      BATCH_SIZE="$2"
       shift 2
       ;;
     --backoff-dec)
@@ -104,7 +99,7 @@ echo ""
 echo "Consensus settings:"
 echo "Protocol:          $PROTOCOL"
 echo "K:                 $K"
-echo "Batch Size:        $BATCH_LOW-$BATCH_HIGH"
+echo "Batch Size:        $BATCH_SIZE"
 echo "Backoff Decrement: $BACKOFF_DEC"
 
 echo ""
@@ -134,8 +129,7 @@ cat > "$RUNTIME_CONF" <<EOF
 protocol=$PROTOCOL
 persistent=$PERSISTENT
 k=$K
-batch_size_low=$BATCH_LOW
-batch_size_high=$BATCH_HIGH
+batch_size=$BATCH_SIZE
 backoff_decrement=$BACKOFF_DEC
 consensus_timeout_ms=$TIMEOUT_CONSENSUS
 election_timeout_min_ms=$TIMEOUT_ELECTION_MIN
@@ -237,7 +231,7 @@ for ip in "${PUBLIC_IPS[@]}"; do
 done
 
 echo "Downloading output from client..."
-scp -i "$KEY" -o StrictHostKeyChecking=no $USER@$CLIENT_IP:~/out.txt "./../output/protocol=$PROTOCOL-N=$N-K=$K-client=$CONCURRENT_CLIENT-batch=$BATCH_LOW,$BATCH_HIGH-fail=$FAILURE_TYPE.txt"
+scp -i "$KEY" -o StrictHostKeyChecking=no $USER@$CLIENT_IP:~/out.txt "./../output/protocol=$PROTOCOL-N=$N-K=$K-client=$CONCURRENT_CLIENT-batch=$BATCH_SIZE-fail=$FAILURE_TYPE.txt"
 
 
 if [ "$LOGGING" = "true" ]; then

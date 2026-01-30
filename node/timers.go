@@ -199,7 +199,7 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, bool, e
 	// Build AppendEntries
 	nextIndex := node.nextIndex[nodeId]
 
-	entries, err := node.db.GetLogsFromIndex(nextIndex, node.BatchSizeHigh)
+	entries, err := node.db.GetLogsFromIndex(nextIndex, node.BatchSize)
 	if err != nil {
 		log.Panicf("Error getting logs from index %d: %v", nextIndex, err)
 	}

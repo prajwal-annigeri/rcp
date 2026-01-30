@@ -96,13 +96,13 @@ cd ..
 You need to run this steps for each experiment.
 
 1. Go to the run experiment directory by running `cd run`.
-2. Run the experiment using `./run.sh --protocol [PROTOCOL] --K [K] --batch-low [BATCH_LOW] --batch-high [BATCH_HIGH] --client [CONCURRENT_CLIENT] --time [EXPERIMENT_TIME] --failure [None/LF/RF/LOF/ROF]`.
+2. Run the experiment using `./run.sh --protocol [PROTOCOL] --K [K] --batch-size [BATCH_SIZE] --client [CONCURRENT_CLIENT] --time [EXPERIMENT_TIME] --failure [None/LF/RF/LOF/ROF]`.
 3. The result of the run will be in `out.txt`.
 
 Example:
 ```
 cd run
-./run.sh --protocol rcp --K 2 --batch-low 256 --batch-high 512 --client 256 --time 30 --failure None
+./run.sh --protocol rcp --K 2 --batch-size 512 --client 256 --time 30 --failure None
 ```
 
 ### Notes

@@ -8,8 +8,7 @@ T_CONSENSUS=300
 T_ELECTION_MIN=150
 T_ELECTION_MAX=300
 T_HEARTBEAT=50
-BATCH_LOW=256
-BATCH_HIGH=512
+BATCH_SIZE=512
 CLIENT=512
 
 FAILURE_T=5
@@ -25,10 +24,9 @@ for protocol in "${protocols[@]}"; do
             yes "" | bash run.sh \
                 --protocol $protocol \
                 --K $k \
-                --batch-low $BATCH_LOW \
-                --batch-high $BATCH_HIGH \
+                --batch-size $BATCH_SIZE \
                 --client $CLIENT \
-                --backoff-dec $BATCH_HIGH \
+                --backoff-dec $BATCH_SIZE \
                 --ct $T_CONSENSUS \
                 --et-min $T_ELECTION_MIN \
                 --et-max $T_ELECTION_MAX \

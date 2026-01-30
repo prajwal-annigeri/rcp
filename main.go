@@ -29,8 +29,7 @@ type runtimeConfig struct {
 	Protocol           string
 	Persistent         bool
 	K                  int
-	BatchSizeLow       int
-	BatchSizeHigh      int
+	BatchSize          int
 	BackoffDec         int
 	ConsensusTimeout   int
 	ElectionTimeoutMin int
@@ -80,19 +79,12 @@ func loadRuntimeConfig(path string) (runtimeConfig, error) {
 			}
 			cfg.K = parsed
 			seen[key] = true
-		case "batch_size_low":
+		case "batch_size":
 			parsed, err := strconv.Atoi(value)
 			if err != nil {
-				return runtimeConfig{}, fmt.Errorf("invalid batch_size_low value on line %d: %w", lineNo, err)
+				return runtimeConfig{}, fmt.Errorf("invalid batch_size value on line %d: %w", lineNo, err)
 			}
-			cfg.BatchSizeLow = parsed
-			seen[key] = true
-		case "batch_size_high":
-			parsed, err := strconv.Atoi(value)
-			if err != nil {
-				return runtimeConfig{}, fmt.Errorf("invalid batch_size_high value on line %d: %w", lineNo, err)
-			}
-			cfg.BatchSizeHigh = parsed
+			cfg.BatchSize = parsed
 			seen[key] = true
 		case "backoff_decrement":
 			parsed, err := strconv.Atoi(value)
@@ -141,8 +133,7 @@ func loadRuntimeConfig(path string) (runtimeConfig, error) {
 		"protocol",
 		"persistent",
 		"k",
-		"batch_size_low",
-		"batch_size_high",
+		"batch_size",
 		"backoff_decrement",
 		"consensus_timeout_ms",
 		"election_timeout_min_ms",
@@ -183,8 +174,7 @@ func main() {
 		ConfigJSON:         *configFlag,
 		ConfigFile:         *configFile,
 		K:                  runtimeCfg.K,
-		BatchSizeLow:       runtimeCfg.BatchSizeLow,
-		BatchSizeHigh:      runtimeCfg.BatchSizeHigh,
+		BatchSize:          runtimeCfg.BatchSize,
 		BackoffDec:         runtimeCfg.BackoffDec,
 		ConsensusTimeout:   runtimeCfg.ConsensusTimeout,
 		ElectionTimeoutMin: runtimeCfg.ElectionTimeoutMin,
