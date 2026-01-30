@@ -7,7 +7,6 @@ FAILURE_CLIENT_EXEC_NAME="failure-client"
 YCSB_EXEC_NAME="go-ycsb"
 
 PORT=8080
-HTTP_PORT=7080
 
 USE_PRIVATE_IP=$1
 
@@ -39,14 +38,14 @@ if [[ "$USE_PRIVATE_IP" == "true" ]]; then
   for i in "${!PRIVATE_IPS[@]}"; do
     id=$(printf "\\$(printf '%03o' $((65 + i)))")
     ip="${PRIVATE_IPS[$i]}"
-    nodes+=("{\"id\":\"$id\",\"port\":\"$PORT\",\"http_port\":\"$HTTP_PORT\",\"ip\":\"$ip\"}")
+    nodes+=("{\"id\":\"$id\",\"port\":\"$PORT\",\"ip\":\"$ip\"}")
   done
 else
   echo "Using public IPs..."
   for i in "${!PUBLIC_IPS[@]}"; do
     id=$(printf "\\$(printf '%03o' $((65 + i)))")
     ip="${PUBLIC_IPS[$i]}"
-    nodes+=("{\"id\":\"$id\",\"port\":\"$PORT\",\"http_port\":\"$HTTP_PORT\",\"ip\":\"$ip\"}")
+    nodes+=("{\"id\":\"$id\",\"port\":\"$PORT\",\"ip\":\"$ip\"}")
   done
 fi
 

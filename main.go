@@ -1,35 +1,175 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net"
+	"os"
 	"rcp/grpc/kvpb"
 	"rcp/grpc/orcapb"
 	"rcp/node"
+	"strconv"
+	"strings"
 
 	"google.golang.org/grpc"
 )
 
 var (
-	nodeId             = flag.String("id", "", "Node ID")
-	logs               = flag.Bool("logs", false, "Logging")
-	protocol           = flag.String("protocol", "rcp", "raft/fraft/rcp")
-	persist            = flag.Bool("persist", false, "Persistent or in-memory")
-	configFlag         = flag.String("config", "", "node config JSON")
-	configFile         = flag.String("config-file", "./nodes.json", "node config JSON filename")
-	K                  = flag.Int("K", 2, "Value of K")
-	batchSizeLow       = flag.Int("batch-low", 100, "Batch size of new request to trigger AppendEntries")
-	batchSizeHigh      = flag.Int("batch-high", 200, "Maximum batch size per AppendEntries")
-	backoffDec         = flag.Int("backoff-decrement", 200, "Backoff decrement when new leader arise")
-	consensusTimeout   = flag.Int("ct", 1000, "Consensus timeout in milliseconds")
-	electionTimeoutMin = flag.Int("et-min", 500, "Minimum election timeout in milliseconds")
-	electionTimeoutMax = flag.Int("et-max", 1000, "Maximum election timeout in milliseconds")
-	batchTimeout       = flag.Int("bt", 2, "Batch timeout in milliseconds")
-	heartbeatTimeout   = flag.Int("ht", 50, "Heartbeat timeout in milliseconds")
+	nodeId            = flag.String("id", "", "Node ID")
+	logs              = flag.Bool("logs", false, "Logging")
+	runtimeConfigFile = flag.String("runtime-config", "./runtime.conf", "runtime config filename")
+	configFlag        = flag.String("config", "", "node config JSON")
+	configFile        = flag.String("config-file", "./nodes.json", "node config JSON filename")
 )
+
+type runtimeConfig struct {
+	Protocol           string
+	Persistent         bool
+	K                  int
+	BatchSizeLow       int
+	BatchSizeHigh      int
+	BackoffDec         int
+	ConsensusTimeout   int
+	ElectionTimeoutMin int
+	ElectionTimeoutMax int
+	BatchTimeout       int
+	HeartbeatTimeout   int
+}
+
+func loadRuntimeConfig(path string) (runtimeConfig, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return runtimeConfig{}, err
+	}
+	defer file.Close()
+
+	cfg := runtimeConfig{}
+	seen := map[string]bool{}
+	scanner := bufio.NewScanner(file)
+	lineNo := 0
+	for scanner.Scan() {
+		lineNo++
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			return runtimeConfig{}, fmt.Errorf("invalid runtime config line %d: %q", lineNo, line)
+		}
+		key := strings.ToLower(strings.TrimSpace(parts[0]))
+		value := strings.TrimSpace(parts[1])
+
+		switch key {
+		case "protocol":
+			cfg.Protocol = value
+			seen[key] = true
+		case "persistent":
+			parsed, err := strconv.ParseBool(value)
+			if err != nil {
+				return runtimeConfig{}, fmt.Errorf("invalid persistent value on line %d: %w", lineNo, err)
+			}
+			cfg.Persistent = parsed
+			seen[key] = true
+		case "k":
+			parsed, err := strconv.Atoi(value)
+			if err != nil {
+				return runtimeConfig{}, fmt.Errorf("invalid k value on line %d: %w", lineNo, err)
+			}
+			cfg.K = parsed
+			seen[key] = true
+		case "batch_size_low":
+			parsed, err := strconv.Atoi(value)
+			if err != nil {
+				return runtimeConfig{}, fmt.Errorf("invalid batch_size_low value on line %d: %w", lineNo, err)
+			}
+			cfg.BatchSizeLow = parsed
+			seen[key] = true
+		case "batch_size_high":
+			parsed, err := strconv.Atoi(value)
+			if err != nil {
+				return runtimeConfig{}, fmt.Errorf("invalid batch_size_high value on line %d: %w", lineNo, err)
+			}
+			cfg.BatchSizeHigh = parsed
+			seen[key] = true
+		case "backoff_decrement":
+			parsed, err := strconv.Atoi(value)
+			if err != nil {
+				return runtimeConfig{}, fmt.Errorf("invalid backoff_decrement value on line %d: %w", lineNo, err)
+			}
+			cfg.BackoffDec = parsed
+			seen[key] = true
+		case "consensus_timeout_ms":
+			parsed, err := strconv.Atoi(value)
+			if err != nil {
+				return runtimeConfig{}, fmt.Errorf("invalid consensus_timeout_ms value on line %d: %w", lineNo, err)
+			}
+			cfg.ConsensusTimeout = parsed
+			seen[key] = true
+		case "election_timeout_min_ms":
+			parsed, err := strconv.Atoi(value)
+			if err != nil {
+				return runtimeConfig{}, fmt.Errorf("invalid election_timeout_min_ms value on line %d: %w", lineNo, err)
+			}
+			cfg.ElectionTimeoutMin = parsed
+			seen[key] = true
+		case "election_timeout_max_ms":
+			parsed, err := strconv.Atoi(value)
+			if err != nil {
+				return runtimeConfig{}, fmt.Errorf("invalid election_timeout_max_ms value on line %d: %w", lineNo, err)
+			}
+			cfg.ElectionTimeoutMax = parsed
+			seen[key] = true
+		case "batch_timeout_ms":
+			parsed, err := strconv.Atoi(value)
+			if err != nil {
+				return runtimeConfig{}, fmt.Errorf("invalid batch_timeout_ms value on line %d: %w", lineNo, err)
+			}
+			cfg.BatchTimeout = parsed
+			seen[key] = true
+		case "heartbeat_timeout_ms":
+			parsed, err := strconv.Atoi(value)
+			if err != nil {
+				return runtimeConfig{}, fmt.Errorf("invalid heartbeat_timeout_ms value on line %d: %w", lineNo, err)
+			}
+			cfg.HeartbeatTimeout = parsed
+			seen[key] = true
+		default:
+			return runtimeConfig{}, fmt.Errorf("unknown runtime config key %q on line %d", key, lineNo)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return runtimeConfig{}, err
+	}
+
+	requiredKeys := []string{
+		"protocol",
+		"persistent",
+		"k",
+		"batch_size_low",
+		"batch_size_high",
+		"backoff_decrement",
+		"consensus_timeout_ms",
+		"election_timeout_min_ms",
+		"election_timeout_max_ms",
+		"batch_timeout_ms",
+		"heartbeat_timeout_ms",
+	}
+	var missing []string
+	for _, key := range requiredKeys {
+		if !seen[key] {
+			missing = append(missing, key)
+		}
+	}
+	if len(missing) > 0 {
+		return runtimeConfig{}, fmt.Errorf("missing runtime config keys: %s", strings.Join(missing, ", "))
+	}
+
+	return cfg, nil
+}
 
 func main() {
 	flag.Parse()
@@ -40,21 +180,26 @@ func main() {
 		log.SetOutput(io.Discard)
 	}
 
+	runtimeCfg, err := loadRuntimeConfig(*runtimeConfigFile)
+	if err != nil {
+		log.Fatalf("failed to load runtime config (%s): %v", *runtimeConfigFile, err)
+	}
+
 	nodeCfg := node.NodeConfig{
 		NodeID:             *nodeId,
-		Protocol:           *protocol,
-		Persistent:         *persist,
+		Protocol:           runtimeCfg.Protocol,
+		Persistent:         runtimeCfg.Persistent,
 		ConfigJSON:         *configFlag,
 		ConfigFile:         *configFile,
-		K:                  *K,
-		BatchSizeLow:       *batchSizeLow,
-		BatchSizeHigh:      *batchSizeHigh,
-		BackoffDec:         *backoffDec,
-		ConsensusTimeout:   *consensusTimeout,
-		ElectionTimeoutMin: *electionTimeoutMin,
-		ElectionTimeoutMax: *electionTimeoutMax,
-		BatchTimeout:       *batchTimeout,
-		HeartbeatTimeout:   *heartbeatTimeout,
+		K:                  runtimeCfg.K,
+		BatchSizeLow:       runtimeCfg.BatchSizeLow,
+		BatchSizeHigh:      runtimeCfg.BatchSizeHigh,
+		BackoffDec:         runtimeCfg.BackoffDec,
+		ConsensusTimeout:   runtimeCfg.ConsensusTimeout,
+		ElectionTimeoutMin: runtimeCfg.ElectionTimeoutMin,
+		ElectionTimeoutMax: runtimeCfg.ElectionTimeoutMax,
+		BatchTimeout:       runtimeCfg.BatchTimeout,
+		HeartbeatTimeout:   runtimeCfg.HeartbeatTimeout,
 	}
 
 	if err := nodeCfg.Validate(); err != nil {

@@ -37,7 +37,6 @@ type ConfigNode struct {
 	Id       string `json:"id"`
 	IP       string `json:"ip"`
 	Port     string `json:"port"`
-	HttpPort string `json:"http_port"`
 }
 
 type ConfigFile struct {
@@ -86,7 +85,6 @@ type Node struct {
 	// Unchanged attributes, don't require mutex locking
 	Id             string `json:"id"`
 	Port           string `json:"port"`
-	HttpPort       string `json:"http_port"`
 	IP             string `json:"ip"`
 	NodeAddressMap map[string]string
 	ConnMap        map[string]*grpc.ClientConn
@@ -183,7 +181,7 @@ func NewNode(cfg NodeConfig) (*Node, error) {
 
 	log.Printf("K: %d, batch size: %d-%d, backoff decrement: %d, consensus timeout: %dms, election timeout: %dms-%dms, batch timeout: %dms, heartbeat timeout: %dms", cfg.K, cfg.BatchSizeLow, cfg.BatchSizeHigh, cfg.BackoffDec, cfg.ConsensusTimeout, cfg.ElectionTimeoutMin, cfg.ElectionTimeoutMax, cfg.BatchTimeout, cfg.HeartbeatTimeout)
 	for _, nodeDef := range parsedConfig.Nodes {
-		log.Printf("%s %s %s %s", nodeDef.Id, nodeDef.IP, nodeDef.Port, nodeDef.HttpPort)
+		log.Printf("%s %s %s", nodeDef.Id, nodeDef.IP, nodeDef.Port)
 	}
 
 	newNode := &Node{
@@ -245,7 +243,6 @@ func NewNode(cfg NodeConfig) (*Node, error) {
 	// go through all the nodes defined in config file and map them to their gRPC ports
 	for _, nodeDef := range parsedConfig.Nodes {
 		if nodeDef.Id == cfg.NodeID {
-			newNode.HttpPort = nodeDef.HttpPort
 			newNode.Port = nodeDef.Port
 		}
 		newNode.NodeAddressMap[nodeDef.Id] = fmt.Sprintf("%s:%s", nodeDef.IP, nodeDef.Port)

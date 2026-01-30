@@ -5,19 +5,10 @@ import sys
 import argparse
 
 parser = argparse.ArgumentParser()
-
-parser.add_argument('--protocol', type=str, default="rcp", help="Protocol. can be rcp/raft/fraft")
-parser.add_argument('--persist', action='store_true', help="Persistent or in-memory")
-
+parser.add_argument('--runtime-config', type=str, default="runtime.conf", help="Path to runtime.conf")
 args = parser.parse_args()
 
-protocol = args.protocol
-if protocol not in ["rcp", "raft", "fraft"]:
-    print(f"Invalid protocol: {protocol}")
-    exit(0)
-persist = ""
-if args.persist:
-    persist = "--persist"
+runtime_config = args.runtime_config
 # Read JSON file
 json_file = "nodes.json"
 
@@ -34,7 +25,7 @@ def run_server(server):
         pass
         # print(f"Failed to clear db: {e}")
     # Command to open a new macOS Terminal window and execute the Go run command
-    cmd = f'osascript -e \'tell application "Terminal" to do script "cd {cwd} && go run main.go --id {server["id"]} --logs --protocol {protocol} {persist}"\''
+    cmd = f'osascript -e \'tell application "Terminal" to do script "cd {cwd} && go run main.go --id {server["id"]} --logs --runtime-config {runtime_config}"\''
     subprocess.run(cmd, shell=True)
 
 # Start each server in a new macOS terminal window

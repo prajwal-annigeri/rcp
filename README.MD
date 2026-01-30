@@ -4,26 +4,43 @@
 - Go 1.23.x
 
 ### Command Line Arguments
-| Flag          | Type   | Default         | Description                          |
-|---------------|--------|-----------------|--------------------------------------|
-| `--id`        | string | `""`            | Node ID                              |
-| `--logs`      | bool   | `false`         | Enable logging                       |
-| `--protocol`  | string | `"rcp"`         | Consensus protocol (`raft/fraft/rcp`) |
-| `--persist`   | bool   | `false`         | Use persistent storage or in-memory  |
-| `--config`    | string | `""`            | Inline JSON string for node config   |
-| `--config-file` | string | `"./nodes.json"` | Path to JSON config file           |
+| Flag               | Type   | Default            | Description                        |
+|--------------------|--------|--------------------|------------------------------------|
+| `--id`             | string | `""`               | Node ID                            |
+| `--logs`           | bool   | `false`            | Enable logging                     |
+| `--config`         | string | `""`               | Inline JSON string for node config |
+| `--config-file`    | string | `"./nodes.json"`   | Path to JSON config file           |
+| `--runtime-config` | string | `"./runtime.conf"` | Path to runtime configuration file |
+
+### Runtime Configuration File
+Runtime settings (protocol, timeouts, batch sizes, etc.) are loaded from `runtime.conf`.
+
+Example:
+```
+protocol=rcp
+persistent=false
+k=2
+batch_size_low=100
+batch_size_high=200
+backoff_decrement=200
+consensus_timeout_ms=1000
+election_timeout_min_ms=500
+election_timeout_max_ms=1000
+batch_timeout_ms=2
+heartbeat_timeout_ms=50
+```
 
 
 ## Setting up servers
 
 ### Docker
 - Build docker image `docker build -t rcp .`
-- Run docker container `docker run -p {host_port}:{container_http_server_port} -p {host_port:container_grpc_server_port} rcp --id {node_id} --logs --config='{config JSON here}'`
-    - Example `docker run -p 8080:8080 -p 7080:7080 rcp --id S1 --logs --config='{"K":2,"batch_size":100,"nodes":[{"id":"S1","port":":8080","http_port":":7080","ip":"127.0.0.1"},{"id":"S2","port":":8081","http_port":":7081","ip":"127.0.0.1"}]}'`
+- Run docker container `docker run -p {host_port}:{container_grpc_server_port} -v $(pwd)/runtime.conf:/app/runtime.conf rcp --id {node_id} --logs --config='{config JSON here}'`
+    - Example `docker run -p 8080:8080 -v $(pwd)/runtime.conf:/app/runtime.conf rcp --id S1 --logs --config='{"nodes":[{"id":"S1","port":"8080","ip":"127.0.0.1"},{"id":"S2","port":"8081","ip":"127.0.0.1"}]}'`
 
 ### MacOS
 - Run `go mod tidy` to install the required dependencies
-- Modify `nodes.json` to set number of nodes and value of 'K'
+- Modify `nodes.json` to set number of nodes and update `runtime.conf` for runtime settings (including `k`)
 - Run `python3 init.py` which will open up a terminal window for each node
 
 ## Failure Client

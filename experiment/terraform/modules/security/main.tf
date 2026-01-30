@@ -1,6 +1,6 @@
 resource "aws_security_group" "security_group" {
-  name        = "allow-ssh-http"
-  description = "Allow HTTP (8080, 7080) and SSH"
+  name        = "allow-ssh-8080"
+  description = "Allow 8080 and SSH"
 
   ingress {
     from_port   = 22
@@ -12,13 +12,6 @@ resource "aws_security_group" "security_group" {
   ingress {
     from_port   = 8080
     to_port     = 8080
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 7080
-    to_port     = 7080
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }

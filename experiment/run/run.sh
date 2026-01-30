@@ -18,6 +18,7 @@ TIMEOUT_ELECTION_MAX=1000
 TIMEOUT_BATCH=2
 TIMEOUT_HEARTBEAT=50
 LOGGING="false"
+PERSISTENT="false"
 
 CONCURRENT_CLIENT=8
 FAILURE_TYPE="None"
@@ -133,6 +134,22 @@ echo ""
 echo "Press ENTER to continue..."
 read
 
+RUNTIME_CONF="./runtime.conf"
+
+cat > "$RUNTIME_CONF" <<EOF
+protocol=$PROTOCOL
+persistent=$PERSISTENT
+k=$K
+batch_size_low=$BATCH_LOW
+batch_size_high=$BATCH_HIGH
+backoff_decrement=$BACKOFF_DEC
+consensus_timeout_ms=$TIMEOUT_CONSENSUS
+election_timeout_min_ms=$TIMEOUT_ELECTION_MIN
+election_timeout_max_ms=$TIMEOUT_ELECTION_MAX
+batch_timeout_ms=$TIMEOUT_BATCH
+heartbeat_timeout_ms=$TIMEOUT_HEARTBEAT
+EOF
+
 # Run servers
 echo "Running servers..."
 
@@ -142,11 +159,14 @@ for i in "${!PUBLIC_IPS[@]}"; do
   id=$(printf "\\$(printf '%03o' $((65 + i)))")
   ip="${PUBLIC_IPS[$i]}"
 
+  echo "Uploading runtime.conf to $ip..."
+  scp -i "$KEY" -o StrictHostKeyChecking=no "$RUNTIME_CONF" "$USER@$ip:~/runtime.conf"
+
   echo "Starting $APP_EXEC on $ip with ID $id..."
   if [ "$LOGGING" = "true" ]; then
-    ssh -i "$KEY" -o StrictHostKeyChecking=no "$USER@$ip" "tmux new-session -d -s app_session './$APP_EXEC --id $id --config-file \"./nodes.json\" --protocol $PROTOCOL --K $K --batch-low $BATCH_LOW --batch-high $BATCH_HIGH --backoff-decrement $BACKOFF_DEC --ct $TIMEOUT_CONSENSUS --et-min $TIMEOUT_ELECTION_MIN --et-max $TIMEOUT_ELECTION_MAX --bt $TIMEOUT_BATCH --ht $TIMEOUT_HEARTBEAT --logs > out.txt 2>&1'"
+    ssh -i "$KEY" -o StrictHostKeyChecking=no "$USER@$ip" "tmux new-session -d -s app_session './$APP_EXEC --id $id --config-file \"./nodes.json\" --logs > out.txt 2>&1'"
   else
-    ssh -i "$KEY" -o StrictHostKeyChecking=no "$USER@$ip" "tmux new-session -d -s app_session './$APP_EXEC --id $id --config-file \"./nodes.json\" --protocol $PROTOCOL --K $K --batch-low $BATCH_LOW --batch-high $BATCH_HIGH --backoff-decrement $BACKOFF_DEC --ct $TIMEOUT_CONSENSUS --et-min $TIMEOUT_ELECTION_MIN --et-max $TIMEOUT_ELECTION_MAX --bt $TIMEOUT_BATCH --ht $TIMEOUT_HEARTBEAT'"
+    ssh -i "$KEY" -o StrictHostKeyChecking=no "$USER@$ip" "tmux new-session -d -s app_session './$APP_EXEC --id $id --config-file \"./nodes.json\"'"
   fi
 done
 
