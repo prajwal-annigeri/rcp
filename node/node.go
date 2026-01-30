@@ -34,9 +34,9 @@ type vote struct {
 }
 
 type ConfigNode struct {
-	Id       string `json:"id"`
-	IP       string `json:"ip"`
-	Port     string `json:"port"`
+	Id   string `json:"id"`
+	IP   string `json:"ip"`
+	Port string `json:"port"`
 }
 
 type ConfigFile struct {
@@ -222,7 +222,20 @@ func NewNode(cfg NodeConfig) (*Node, error) {
 		stepdownChan:              make(chan struct{}),
 	}
 
-	newNode.db = db.InitMemoryDatabase()
+	if cfg.Persistent {
+		if err := os.MkdirAll("./dbs", 0o755); err != nil {
+			return nil, fmt.Errorf("failed to create db directory: %w", err)
+		}
+		dbPath := fmt.Sprintf("./dbs/%s.db", cfg.NodeID)
+		boltDB, closeFunc, err := db.InitBoltDatabase(dbPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to init boltdb: %w", err)
+		}
+		newNode.db = boltDB
+		newNode.DBCloseFunc = closeFunc
+	} else {
+		newNode.db = db.InitMemoryDatabase()
+	}
 
 	switch cfg.Protocol {
 	case "rcp":

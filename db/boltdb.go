@@ -1,6 +1,7 @@
 package db
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"log"
@@ -8,6 +9,7 @@ import (
 	"rcp/grpc/orcapb"
 
 	bolt "go.etcd.io/bbolt"
+	"google.golang.org/protobuf/proto"
 )
 
 type LogType int
@@ -20,6 +22,19 @@ const (
 
 type BoltDB struct {
 	DB *bolt.DB
+}
+
+func logKey(index int64) []byte {
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, uint64(index))
+	return buf
+}
+
+func logIndexFromKey(key []byte) int64 {
+	if len(key) != 8 {
+		return -1
+	}
+	return int64(binary.BigEndian.Uint64(key))
 }
 
 // Initialize boltDB
@@ -45,16 +60,14 @@ func InitBoltDatabase(dbPath string) (db *BoltDB, closeFunc func() error, err er
 // Get implements Database.
 func (d *BoltDB) Get(key string, bucket string) (string, error) {
 	var value string
-	log.Printf("Getting key '%s' from bucket '%s'", key, bucket)
 	err := d.DB.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucket))
 		if b == nil {
-			log.Printf("Bucket %s does not exist", bucket)
-			return fmt.Errorf("bucket %s does not exist", bucket)
+			return ErrNotFound
 		}
 		valueBytes := b.Get([]byte(key))
 		if valueBytes == nil {
-			return fmt.Errorf("no value for key %s", key)
+			return ErrNotFound
 		}
 		value = string(valueBytes)
 		return nil
@@ -67,73 +80,217 @@ func (d *BoltDB) Get(key string, bucket string) (string, error) {
 
 // Store implements Database.
 func (d *BoltDB) Store(key string, bucket string, value string) error {
-	panic("unimplemented")
-	// log.Printf("Storing key %s to bucket %s\n", key, bucket)
-	// return d.DB.Batch(func(tx *bolt.Tx) error {
-	// 	b := tx.Bucket([]byte(bucket))
-	// 	if b == nil {
-	// 		log.Printf("Bucket %s does not exist", bucket)
-	// 		return fmt.Errorf("bucket %s does not exist", bucket)
-	// 	}
-	// 	return b.Put([]byte(key), []byte(value))
-	// })
+	return d.DB.Update(func(tx *bolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists([]byte(bucket))
+		if err != nil {
+			return fmt.Errorf("bucket %s create: %w", bucket, err)
+		}
+		return b.Put([]byte(key), []byte(value))
+	})
 }
 
 // Delete implements Database.
 func (d *BoltDB) Delete(key string, bucket string) error {
-	panic("unimplemented")
-	// log.Printf("Deleting key: %s bucket: %s", key, bucket)
-	// return d.DB.Batch(func(tx *bolt.Tx) error {
-	// 	b := tx.Bucket([]byte(bucket))
-	// 	if b == nil {
-	// 		return fmt.Errorf("bucket %s does not exist", bucket)
-	// 	}
-	// 	err := b.Delete([]byte(key))
-	// 	if err != nil {
-	// 		return fmt.Errorf("error deleting key %s from bucket %s: %v", key, bucket, err)
-	// 	}
-	// 	return nil
-	// })
+	return d.DB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucket))
+		if b == nil {
+			return ErrNotFound
+		}
+		return b.Delete([]byte(key))
+	})
 }
 
 // AppendLog implements Database.
-func (d *BoltDB) AppendLog(log *orcapb.LogEntry) int64 {
-	panic("unimplemented")
+func (d *BoltDB) AppendLog(logEntry *orcapb.LogEntry) (int64, error) {
+	var index int64
+	err := d.DB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(constants.LogsBucket)
+		if b == nil {
+			return errors.New("logs bucket not found")
+		}
+		cursor := b.Cursor()
+		lastKey, _ := cursor.Last()
+		if lastKey == nil {
+			index = 0
+		} else {
+			index = logIndexFromKey(lastKey) + 1
+		}
+		data, err := proto.Marshal(logEntry)
+		if err != nil {
+			return err
+		}
+		return b.Put(logKey(index), data)
+	})
+	return index, err
 }
 
 // PutLogAtIndex implements Database.
 func (d *BoltDB) PutLogAtIndex(index int64, log *orcapb.LogEntry) error {
-	panic("unimplemented")
+	if index < 0 {
+		return ErrNotFound
+	}
+	return d.DB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(constants.LogsBucket)
+		if b == nil {
+			return errors.New("logs bucket not found")
+		}
+		cursor := b.Cursor()
+		lastKey, _ := cursor.Last()
+		lastIndex := int64(-1)
+		if lastKey != nil {
+			lastIndex = logIndexFromKey(lastKey)
+		}
+
+		if index > lastIndex+1 {
+			return ErrSkippedIndex
+		}
+
+		data, err := proto.Marshal(log)
+		if err != nil {
+			return err
+		}
+		return b.Put(logKey(index), data)
+	})
 }
 
 // GetLogAtIndex implements Database.
 func (d *BoltDB) GetLogAtIndex(index int64) (*orcapb.LogEntry, error) {
-	panic("unimplemented")
+	if index < 0 {
+		return nil, ErrNotFound
+	}
+	var entry *orcapb.LogEntry
+	err := d.DB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(constants.LogsBucket)
+		if b == nil {
+			return errors.New("logs bucket not found")
+		}
+		data := b.Get(logKey(index))
+		if data == nil {
+			return ErrNotFound
+		}
+		entry = &orcapb.LogEntry{}
+		return proto.Unmarshal(data, entry)
+	})
+	return entry, err
 }
 
 // GetLogsFromIndex implements Database.
-func (d *BoltDB) GetLogsFromIndex(index int64) ([]*orcapb.LogEntry, error) {
-	panic("unimplemented")
+func (d *BoltDB) GetLogsFromIndex(index int64, maxLogs int) ([]*orcapb.LogEntry, error) {
+	if maxLogs <= 0 {
+		return []*orcapb.LogEntry{}, nil
+	}
+	if index < 0 {
+		index = 0
+	}
+	entries := make([]*orcapb.LogEntry, 0, maxLogs)
+	err := d.DB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(constants.LogsBucket)
+		if b == nil {
+			return errors.New("logs bucket not found")
+		}
+		cursor := b.Cursor()
+		for k, v := cursor.Seek(logKey(index)); k != nil && len(entries) < maxLogs; k, v = cursor.Next() {
+			entry := &orcapb.LogEntry{}
+			if err := proto.Unmarshal(v, entry); err != nil {
+				return err
+			}
+			entries = append(entries, entry)
+		}
+		return nil
+	})
+	return entries, err
 }
 
 // TruncateFrom implements Database.
 func (d *BoltDB) TruncateFrom(index int64) error {
-	return errors.New("unimplemented")
+	if index <= 0 {
+		index = 0
+	}
+	return d.DB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(constants.LogsBucket)
+		if b == nil {
+			return errors.New("logs bucket not found")
+		}
+		cursor := b.Cursor()
+		k, _ := cursor.Seek(logKey(index))
+		if k == nil {
+			return ErrNotFound
+		}
+		for ; k != nil; k, _ = cursor.Next() {
+			if err := cursor.Delete(); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // PrintAllLogs implements Database.
 func (d *BoltDB) PrintAllLogs() error {
-	panic("unimplemented")
+	return d.DB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(constants.LogsBucket)
+		if b == nil {
+			return errors.New("logs bucket not found")
+		}
+		cursor := b.Cursor()
+		for k, v := cursor.First(); k != nil; k, v = cursor.Next() {
+			entry := &orcapb.LogEntry{}
+			if err := proto.Unmarshal(v, entry); err != nil {
+				return err
+			}
+			log.Printf("log[%d]=%v", logIndexFromKey(k), entry)
+		}
+		return nil
+	})
 }
 
 // PrintAllLogsUnordered implements Database.
 func (d *BoltDB) PrintAllLogsUnordered() error {
-	panic("unimplemented")
+	return d.PrintAllLogs()
 }
 
 // GetLastIndex implements Database.
-func (d *BoltDB) GetLastIndexAndTerm() (int64, int64) {
-	panic("unimplemented")
+func (d *BoltDB) GetLastIndex() (int64, error) {
+	var lastIndex int64 = -1
+	err := d.DB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(constants.LogsBucket)
+		if b == nil {
+			return errors.New("logs bucket not found")
+		}
+		cursor := b.Cursor()
+		k, _ := cursor.Last()
+		if k == nil {
+			lastIndex = -1
+			return nil
+		}
+		lastIndex = logIndexFromKey(k)
+		return nil
+	})
+	return lastIndex, err
+}
+
+// GetLastTerm implements Database.
+func (d *BoltDB) GetLastTerm() (int64, error) {
+	var lastTerm int64
+	err := d.DB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(constants.LogsBucket)
+		if b == nil {
+			return errors.New("logs bucket not found")
+		}
+		cursor := b.Cursor()
+		_, v := cursor.Last()
+		if v == nil {
+			lastTerm = 0
+			return nil
+		}
+		entry := &orcapb.LogEntry{}
+		if err := proto.Unmarshal(v, entry); err != nil {
+			return err
+		}
+		lastTerm = entry.Term
+		return nil
+	})
+	return lastTerm, err
 }
 
 // Create Buckets
@@ -153,235 +310,3 @@ func (d *BoltDB) createBuckets() error {
 		return nil
 	})
 }
-
-// func (d *BoltDB) insertLogsPersistent(appendEntryReq *rcppb.AppendEntriesReq) error {
-// 	currIndex := appendEntryReq.PrevLogIndex + 1
-// 	lastEntryTerm := appendEntryReq.Term
-// 	return node.db.DB.Update(func(tx *bolt.Tx) error {
-// 		b := tx.Bucket(constants.LogsBucket)
-// 		if b == nil {
-// 			return errors.New("bucket not found 'logs'")
-// 		}
-// 		for _, entry := range appendEntryReq.Entries {
-// 			// Lookup existing log at index
-// 			key := fmt.Appendf(nil, "%d", currIndex)
-
-// 			if _, ok := node.possibleFailureOrRecoveryIndex.Load(currIndex); ok {
-// 				logBytes := b.Get(key)
-
-// 				// Track removed nodes
-// 				if logBytes != nil {
-// 					var existingEntry rcppb.LogEntry
-// 					err := json.Unmarshal(logBytes, &existingEntry)
-// 					if err != nil {
-// 						return fmt.Errorf("could not deserialize existing log at index %d: %v", currIndex, err)
-// 					}
-
-// 					if existingEntry.LogType == "failure" {
-// 						node.removeFromFailureSet(existingEntry.NodeId)
-// 					} else if existingEntry.LogType == "recovery" {
-// 						node.removeFromRecoverySet(existingEntry.NodeId)
-// 					}
-// 				}
-// 			}
-
-// 			// Marshal and put new entry
-// 			if entry.LogType == "failure" || entry.LogType == "success" {
-// 				go node.possibleFailureOrRecoveryIndex.Store(currIndex, "")
-// 			}
-// 			newLogBytes, err := json.Marshal(entry)
-// 			if err != nil {
-// 				return fmt.Errorf("could not marshal new log entry at index %d: %v", currIndex, err)
-// 			}
-// 			err = b.Put(key, newLogBytes)
-// 			if err != nil {
-// 				return fmt.Errorf("failed to write log at index %d: %v", currIndex, err)
-// 			}
-
-// 			node.lastIndex = currIndex
-// 			lastEntryTerm = entry.Term
-// 			currIndex++
-// 		}
-
-// 		node.lastTerm = lastEntryTerm
-// 		return nil
-// 	})
-// }
-
-// // This method executes logs from node.execIndex + 1 to endIndex
-// // This method is used in the persistent mode
-// func (node *Node) persistentExecuteTill(endIndex int64) error {
-// 	return node.db.DB.Update(func(tx *bolt.Tx) error {
-// 		logsBkt := tx.Bucket(constants.LogsBucket)
-// 		for node.execIndex < endIndex {
-// 			logBytes := logsBkt.Get(fmt.Appendf(nil, "%d", node.execIndex+1))
-// 			if logBytes == nil {
-// 				return fmt.Errorf("executor() no log at index: %d", node.execIndex+1)
-// 			}
-// 			var logEntry rcppb.LogEntry
-// 			err := json.Unmarshal(logBytes, &logEntry)
-// 			if err != nil {
-// 				return fmt.Errorf("could not deserialize logbytes of index %d into logentry: %v", node.execIndex+1, err)
-// 			}
-
-// 			switch logEntry.LogType {
-// 			case "store":
-// 				kvBkt := tx.Bucket([]byte(logEntry.Bucket))
-// 				if kvBkt == nil {
-// 					return fmt.Errorf("executor() index %d, no bucket %s", node.execIndex+1, logEntry.Bucket)
-// 				}
-// 				kvBkt.Put([]byte(logEntry.Key), []byte(logEntry.Value))
-// 			case "delete":
-// 				kvBkt := tx.Bucket([]byte(logEntry.Bucket))
-// 				if kvBkt == nil {
-// 					return fmt.Errorf("executor() index %d, no bucket %s", node.execIndex+1, logEntry.Bucket)
-// 				}
-// 				kvBkt.Delete([]byte(logEntry.Key))
-// 			case "failure":
-// 				node.currAlive -= 1
-// 				node.serverStatusMap.Store(logEntry.NodeId, false)
-// 				go node.removeFromFailureSet(logEntry.NodeId)
-// 			case "recovery":
-// 				node.currAlive += 1
-// 				node.serverStatusMap.Store(logEntry.NodeId, true)
-// 				go node.removeFromRecoverySet(logEntry.NodeId)
-// 			}
-
-// 			node.execIndex++
-// 		}
-// 		return nil
-// 	})
-// }
-
-// func (d *BoltDB) GetLogAtIndex(index int64) (*rcppb.LogEntry, error) {
-// 	var logBytes []byte
-// 	d.DB.View(func(tx *bolt.Tx) error {
-// 		b := tx.Bucket(constants.LogsBucket)
-// 		logBytes = b.Get(fmt.Appendf(nil, "%d", index))
-// 		return nil
-// 	})
-// 	if logBytes == nil {
-// 		return &rcppb.LogEntry{}, fmt.Errorf("GetLogAtIndex(): no log at index %d", index)
-// 	}
-
-// 	var logEntry rcppb.LogEntry
-// 	err := json.Unmarshal(logBytes, &logEntry)
-// 	if err != nil {
-// 		return &rcppb.LogEntry{}, fmt.Errorf("could not deserialize logbytes into logentry: %v", err)
-// 	}
-
-// 	// log.Printf("Log at index %d: %v\n", index, &logEntry)
-// 	return &logEntry, nil
-// }
-
-// // func (d *BoltDB) DeleteLogsStartingFromIndex(index int64) error {
-// // 	return d.DB.Update(func(tx *bolt.Tx) error {
-// // 		b := tx.Bucket(constants.LogsBucket)
-
-// // 		for i := index; ; i++ {
-// // 			key := fmt.Appendf(nil, "%d", i)
-// // 			value := b.Get(key)
-// // 			if value == nil {
-// // 				break
-// // 			}
-// // 			log.Printf("Deleting key: %s, value: %s\n", string(key), string(value))
-// // 			err := b.Delete(key)
-// // 			if err != nil {
-// // 				return fmt.Errorf("failed to delete index %s", key)
-// // 			}
-// // 			log.Printf("Deleted key %s\n", key)
-// // 		}
-// // 		return nil
-// // 	})
-// // }
-
-// func (d *BoltDB) PrintAllLogs() error {
-// 	return d.DB.View(func(tx *bolt.Tx) error {
-// 		b := tx.Bucket(constants.LogsBucket)
-
-// 		for i := 0; ; i++ {
-// 			key := fmt.Appendf(nil, "%d", i)
-// 			valueBytes := b.Get(key)
-// 			if valueBytes == nil {
-// 				break
-// 			}
-
-// 			var logEntry *rcppb.LogEntry
-// 			err := json.Unmarshal(valueBytes, &logEntry)
-// 			if err != nil {
-// 				return fmt.Errorf("could not deserialize logbytes into logentry: %v", err)
-// 			}
-
-// 			// log.Printf("%s %s\n", key, string(valueBytes))
-// 			log.Printf("%d. Key: %s Bucket: %s\n", i+1, logEntry.Key, logEntry.Bucket)
-// 		}
-// 		return nil
-// 	})
-// }
-
-// func (d *BoltDB) PrintAllLogsUnordered() error {
-// 	return d.DB.View(func(tx *bolt.Tx) error {
-// 		b := tx.Bucket(constants.LogsBucket)
-
-// 		c := b.Cursor()
-// 		for k, v := c.First(); k != nil; k, v = c.Next() {
-// 			var logEntry *rcppb.LogEntry
-// 			err := json.Unmarshal(v, &logEntry)
-// 			if err != nil {
-// 				return fmt.Errorf("could not deserialize logbytes into logentry: %v", err)
-// 			}
-
-// 			key := string(k)
-// 			fmt.Printf("Index: %s, Log Entry: %v\n", key, logEntry)
-// 		}
-
-// 		return nil
-// 	})
-// }
-
-// func (d *BoltDB) GetLogsFromIndex(index int64) ([]*rcppb.LogEntry, error) {
-// 	var logsSlice []*rcppb.LogEntry
-// 	err := d.DB.Update(func(tx *bolt.Tx) error {
-// 		b := tx.Bucket(constants.LogsBucket)
-
-// 		for i := index; ; i++ {
-// 			logIndex := fmt.Sprintf("%d", i)
-// 			logEntryBytes := b.Get([]byte(logIndex))
-// 			if logEntryBytes == nil {
-// 				break
-// 			}
-// 			logEntry := &rcppb.LogEntry{}
-// 			err := json.Unmarshal(logEntryBytes, logEntry)
-// 			if err != nil {
-// 				log.Printf("Unable to unmarshal log index %d into LogEntry type\n", i)
-// 				return err
-// 			}
-// 			logsSlice = append(logsSlice, logEntry)
-// 		}
-// 		return nil
-// 	})
-// 	return logsSlice, err
-// }
-
-// // func (d *BoltDB) PutLogAtIndex(index int64, logEntry *rcppb.LogEntry) (string, string, error) {
-// // 	existingEntry, err := d.GetLogAtIndex(index)
-// // 	failureNode := ""
-// // 	recoveredNode := ""
-// // 	if err == nil {
-// // 		if existingEntry.LogType == "failure" {
-// // 			failureNode = existingEntry.NodeId
-// // 		} else if existingEntry.LogType == "recovery" {
-// // 			recoveredNode = existingEntry.NodeId
-// // 		}
-// // 	}
-// // 	// log.Printf("Putting %v at index %d\n", logEntry, index)
-// // 	logBytes, err := json.Marshal(logEntry)
-// // 	if err != nil {
-// // 		return failureNode, recoveredNode, err
-// // 	}
-// // 	return failureNode, recoveredNode, d.DB.Update(func(tx *bolt.Tx) error {
-// // 		b := tx.Bucket(constants.LogsBucket)
-// // 		key := fmt.Appendf(nil, "%d", index)
-// // 		return b.Put(key, logBytes)
-// // 	})
-// // }
