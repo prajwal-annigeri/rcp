@@ -26,7 +26,6 @@ backoff_decrement=200
 consensus_timeout_ms=1000
 election_timeout_min_ms=500
 election_timeout_max_ms=1000
-batch_timeout_ms=2
 heartbeat_timeout_ms=50
 ```
 

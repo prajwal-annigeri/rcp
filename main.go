@@ -35,7 +35,6 @@ type runtimeConfig struct {
 	ConsensusTimeout   int
 	ElectionTimeoutMin int
 	ElectionTimeoutMax int
-	BatchTimeout       int
 	HeartbeatTimeout   int
 }
 
@@ -123,13 +122,6 @@ func loadRuntimeConfig(path string) (runtimeConfig, error) {
 			}
 			cfg.ElectionTimeoutMax = parsed
 			seen[key] = true
-		case "batch_timeout_ms":
-			parsed, err := strconv.Atoi(value)
-			if err != nil {
-				return runtimeConfig{}, fmt.Errorf("invalid batch_timeout_ms value on line %d: %w", lineNo, err)
-			}
-			cfg.BatchTimeout = parsed
-			seen[key] = true
 		case "heartbeat_timeout_ms":
 			parsed, err := strconv.Atoi(value)
 			if err != nil {
@@ -155,7 +147,6 @@ func loadRuntimeConfig(path string) (runtimeConfig, error) {
 		"consensus_timeout_ms",
 		"election_timeout_min_ms",
 		"election_timeout_max_ms",
-		"batch_timeout_ms",
 		"heartbeat_timeout_ms",
 	}
 	var missing []string
@@ -198,7 +189,6 @@ func main() {
 		ConsensusTimeout:   runtimeCfg.ConsensusTimeout,
 		ElectionTimeoutMin: runtimeCfg.ElectionTimeoutMin,
 		ElectionTimeoutMax: runtimeCfg.ElectionTimeoutMax,
-		BatchTimeout:       runtimeCfg.BatchTimeout,
 		HeartbeatTimeout:   runtimeCfg.HeartbeatTimeout,
 	}
 

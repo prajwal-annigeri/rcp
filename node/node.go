@@ -56,7 +56,6 @@ type NodeConfig struct {
 	ConsensusTimeout   int
 	ElectionTimeoutMin int
 	ElectionTimeoutMax int
-	BatchTimeout       int
 	HeartbeatTimeout   int
 }
 
@@ -104,7 +103,6 @@ type Node struct {
 	ConsensusTimeout   time.Duration
 	ElectionTimeoutMin time.Duration
 	ElectionTimeoutMax time.Duration
-	BatchTimeout       time.Duration
 	HeartbeatTimeout   time.Duration
 
 	// Not part of the protocol, safe to not use mutex for performance
@@ -155,6 +153,8 @@ type Node struct {
 	isReady bool
 
 	stepdownChan chan struct{}
+	flushChans   map[string]chan struct{}
+	pendingFlush map[string]bool
 }
 
 // constructor
@@ -179,7 +179,7 @@ func NewNode(cfg NodeConfig) (*Node, error) {
 		return nil, errors.New("node configuration contains no nodes")
 	}
 
-	log.Printf("K: %d, batch size: %d-%d, backoff decrement: %d, consensus timeout: %dms, election timeout: %dms-%dms, batch timeout: %dms, heartbeat timeout: %dms", cfg.K, cfg.BatchSizeLow, cfg.BatchSizeHigh, cfg.BackoffDec, cfg.ConsensusTimeout, cfg.ElectionTimeoutMin, cfg.ElectionTimeoutMax, cfg.BatchTimeout, cfg.HeartbeatTimeout)
+	log.Printf("K: %d, batch size: %d-%d, backoff decrement: %d, consensus timeout: %dms, election timeout: %dms-%dms, heartbeat timeout: %dms", cfg.K, cfg.BatchSizeLow, cfg.BatchSizeHigh, cfg.BackoffDec, cfg.ConsensusTimeout, cfg.ElectionTimeoutMin, cfg.ElectionTimeoutMax, cfg.HeartbeatTimeout)
 	for _, nodeDef := range parsedConfig.Nodes {
 		log.Printf("%s %s %s", nodeDef.Id, nodeDef.IP, nodeDef.Port)
 	}
@@ -194,7 +194,6 @@ func NewNode(cfg NodeConfig) (*Node, error) {
 		ConsensusTimeout:   time.Duration(cfg.ConsensusTimeout) * time.Millisecond,
 		ElectionTimeoutMin: time.Duration(cfg.ElectionTimeoutMin) * time.Millisecond,
 		ElectionTimeoutMax: time.Duration(cfg.ElectionTimeoutMax) * time.Millisecond,
-		BatchTimeout:       time.Duration(cfg.BatchTimeout) * time.Millisecond,
 		HeartbeatTimeout:   time.Duration(cfg.HeartbeatTimeout) * time.Millisecond,
 
 		// lastApplied:           -1,
@@ -220,6 +219,8 @@ func NewNode(cfg NodeConfig) (*Node, error) {
 		// beginTime: time.Now(),
 		indexToCallbackChannelMap: make(map[int64]chan CallbackReply),
 		stepdownChan:              make(chan struct{}),
+		flushChans:                make(map[string]chan struct{}),
+		pendingFlush:              make(map[string]bool),
 	}
 
 	if cfg.Persistent {
@@ -260,6 +261,10 @@ func NewNode(cfg NodeConfig) (*Node, error) {
 		}
 		newNode.NodeAddressMap[nodeDef.Id] = fmt.Sprintf("%s:%s", nodeDef.IP, nodeDef.Port)
 		newNode.inFlightMessageCount[nodeDef.Id] = 0
+		if nodeDef.Id != cfg.NodeID {
+			newNode.flushChans[nodeDef.Id] = make(chan struct{}, 1)
+			newNode.pendingFlush[nodeDef.Id] = false
+		}
 	}
 
 	newNode.N = len(newNode.NodeAddressMap)

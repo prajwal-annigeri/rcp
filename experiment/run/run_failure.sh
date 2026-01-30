@@ -12,7 +12,6 @@ T_CONSENSUS=300
 T_ELECTION_MIN=150
 T_ELECTION_MAX=300
 T_HEARTBEAT=50
-T_BATCH=4
 BATCH_LOW=256
 BATCH_HIGH=512
 CLIENT=512
@@ -25,7 +24,6 @@ RUN_T=30
 # T_ELECTION_MIN=300
 # T_ELECTION_MAX=600
 # T_HEARTBEAT=100
-# T_BATCH=8
 # BATCH_LOW=256
 # BATCH_HIGH=512
 # CLIENT=512
@@ -38,7 +36,6 @@ RUN_T=30
 # T_ELECTION_MIN=1200
 # T_ELECTION_MAX=2400
 # T_HEARTBEAT=300
-# T_BATCH=30
 # BATCH_LOW=256
 # BATCH_HIGH=512
 # CLIENT=512
@@ -62,7 +59,6 @@ for protocol in "${protocols[@]}"; do
                 --ct $T_CONSENSUS \
                 --et-min $T_ELECTION_MIN \
                 --et-max $T_ELECTION_MAX \
-                --bt $T_BATCH \
                 --ht $T_HEARTBEAT \
                 --time $RUN_T \
                 --failure-time $OSCILLATING_FAILURE_T \
@@ -79,7 +75,6 @@ for protocol in "${protocols[@]}"; do
                 --ct $T_CONSENSUS \
                 --et-min $T_ELECTION_MIN \
                 --et-max $T_ELECTION_MAX \
-                --bt $T_BATCH \
                 --ht $T_HEARTBEAT \
                 --time $RUN_T \
                 --failure-time $FAILURE_T \

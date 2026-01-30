@@ -14,21 +14,18 @@ FAILURE="None"
 # T_ELECTION_MIN=150
 # T_ELECTION_MAX=300
 # T_HEARTBEAT=50
-# T_BATCH=4
 
 # For availability zone geodistribution
 # T_CONSENSUS=600
 # T_ELECTION_MIN=300
 # T_ELECTION_MAX=600
 # T_HEARTBEAT=100
-# T_BATCH=8
 
 # For region geodistribution
 T_CONSENSUS=2400
 T_ELECTION_MIN=1200
 T_ELECTION_MAX=2400
 T_HEARTBEAT=300
-T_BATCH=30
 
 for client in "${clients[@]}"; do
     echo "Running for client = $client. Waiting for 5 seconds in case of early termination is wanted..."
@@ -48,7 +45,6 @@ for client in "${clients[@]}"; do
         --ct $T_CONSENSUS \
         --et-min $T_ELECTION_MIN \
         --et-max $T_ELECTION_MAX \
-        --bt $T_BATCH \
         --ht $T_HEARTBEAT \
         --time $RUN_T \
         --failure-time $FAILURE_T \
@@ -68,7 +64,6 @@ for client in "${clients[@]}"; do
         --ct $T_CONSENSUS \
         --et-min $T_ELECTION_MIN \
         --et-max $T_ELECTION_MAX \
-        --bt $T_BATCH \
         --ht $T_HEARTBEAT \
         --time $RUN_T \
         --failure-time $FAILURE_T \
@@ -93,7 +88,6 @@ for client in "${clients[@]}"; do
         --ct $T_CONSENSUS \
         --et-min $T_ELECTION_MIN \
         --et-max $T_ELECTION_MAX \
-        --bt $T_BATCH \
         --ht $T_HEARTBEAT \
         --time $RUN_T \
         --failure-time $FAILURE_T \
@@ -113,7 +107,6 @@ for client in "${clients[@]}"; do
         --ct $T_CONSENSUS \
         --et-min $T_ELECTION_MIN \
         --et-max $T_ELECTION_MAX \
-        --bt $T_BATCH \
         --ht $T_HEARTBEAT \
         --time $RUN_T \
         --failure-time $FAILURE_T \

@@ -41,11 +41,6 @@ func (node *Node) monitorElectionTimer() {
 }
 
 func (node *Node) startReceiverLoop(entriesCh <-chan LogWithCallbackChannel) {
-	// Batch count might not be accurate since heartbeat loop is running independently
-	// and is not taken into account, but this is just an optimization
-	var batchCount int
-	timer := time.NewTimer(time.Hour) // idle
-
 	for {
 		select {
 		case entry := <-entriesCh:
@@ -55,42 +50,21 @@ func (node *Node) startReceiverLoop(entriesCh <-chan LogWithCallbackChannel) {
 			if node.isLeader {
 				currIdx := node.AppendLogLocked(entry.LogEntry)
 				node.indexToCallbackChannelMap[currIdx] = entry.CallbackChannel
-				batchCount += 1
-
-				// Start batch timeout when receive first request
-				if batchCount == 1 {
-					timer.Reset(node.BatchTimeout)
-				}
-
-				if batchCount >= node.BatchSizeLow {
-					node.flushBatch()
-					batchCount = 0
-					if !timer.Stop() {
+				for nodeId := range node.ClientMap {
+					node.pendingFlush[nodeId] = true
+					if ch, ok := node.flushChans[nodeId]; ok {
 						select {
-						case <-timer.C:
+						case ch <- struct{}{}:
 						default:
 						}
 					}
 				}
-
 			} else {
 				entry.CallbackChannel <- CallbackReply{node.votedFor, ErrNotLeader}
 			}
 
 			node.mutex.Unlock()
-		case <-timer.C:
-			if batchCount > 0 {
-				node.flushBatch()
-				batchCount = 0
-			}
 		}
-	}
-}
-
-func (node *Node) flushBatch() {
-	log.Println("Flush batch called")
-	for nodeId := range node.ClientMap {
-		go node.sendHeartbeatTo(nodeId, false)
 	}
 }
 
@@ -100,87 +74,124 @@ func (node *Node) startHeartbeatLoop(nodeId string) {
 	backingOff := true
 	retryCount := 0
 	timer := time.NewTimer(0) // trigger immediately on start
+	flushChan := node.flushChans[nodeId]
 
 	defer timer.Stop()
 
 	for {
+		triggeredByTimer := false
 		select {
 		case <-node.stepdownChan:
 			return // Stop the loop if node steps down
 
+		case <-flushChan:
 		case <-timer.C:
-			success, err := node.sendHeartbeatTo(nodeId, backingOff)
+			triggeredByTimer = true
+		}
 
-			if err != nil {
-				if errors.Is(err, ErrNotLeader) || errors.Is(err, ErrNotAlive) || errors.Is(err, ErrTooManyInFlightMessages) {
-					continue
-				}
+		node.mutex.Lock()
+		pending := node.pendingFlush[nodeId]
+		inFlight := node.inFlightMessageCount[nodeId]
+		node.mutex.Unlock()
 
-				if node.protocol == "rcp" {
-					st, ok := status.FromError(err)
-					log.Printf("Received error response from %s to heartbeat: %v\n", nodeId, err)
+		if triggeredByTimer && !pending && inFlight > 0 {
+			timer.Reset(node.HeartbeatTimeout)
+			continue
+		}
 
-					// If not denied because of outdated term, count as failure
-					if ok && st.Code() != codes.Aborted {
-						retryCount += 1
+		if !pending && !triggeredByTimer {
+			timer.Reset(node.HeartbeatTimeout)
+			continue
+		}
 
-						// Too many retries, failure detected
-						if retryCount > constants.FailureRetryCount {
-							node.mutex.Lock()
-							if _, failed := node.failedSet[nodeId]; !failed {
-								if _, pendingFailure := node.pendingFailureSet[nodeId]; !pendingFailure {
-									log.Printf("Failure detected on %s", nodeId)
-									// If node is not failed nor pending failure, failure detected
-									failureLog := &orcapb.LogEntry{
-										LogType: orcapb.LogType_FAILURE,
-										NodeId:  nodeId,
-										Term:    node.currentTerm,
-									}
-									node.AppendLogLocked(failureLog)
-								}
-							}
-							node.mutex.Unlock()
-						}
-					}
-				}
+		sentEntries, success, err := node.sendHeartbeatTo(nodeId, backingOff)
+
+		if err != nil {
+			if errors.Is(err, ErrNotLeader) || errors.Is(err, ErrNotAlive) || errors.Is(err, ErrTooManyInFlightMessages) {
 				timer.Reset(node.HeartbeatTimeout)
 				continue
 			}
 
-			retryCount = 0
+			if node.protocol == "rcp" {
+				st, ok := status.FromError(err)
+				log.Printf("Received error response from %s to heartbeat: %v\n", nodeId, err)
 
-			if success {
-				// No longer backing off after first success
-				backingOff = false
+				// If not denied because of outdated term, count as failure
+				if ok && st.Code() != codes.Aborted {
+					retryCount += 1
+
+					// Too many retries, failure detected
+					if retryCount > constants.FailureRetryCount {
+						node.mutex.Lock()
+						if _, failed := node.failedSet[nodeId]; !failed {
+							if _, pendingFailure := node.pendingFailureSet[nodeId]; !pendingFailure {
+								log.Printf("Failure detected on %s", nodeId)
+								// If node is not failed nor pending failure, failure detected
+								failureLog := &orcapb.LogEntry{
+									LogType: orcapb.LogType_FAILURE,
+									NodeId:  nodeId,
+									Term:    node.currentTerm,
+								}
+								node.AppendLogLocked(failureLog)
+							}
+						}
+						node.mutex.Unlock()
+					}
+				}
 			}
+			timer.Reset(node.HeartbeatTimeout)
+			continue
+		}
 
-			if !success && backingOff {
-				timer.Reset(0)
-				continue
+		retryCount = 0
+
+		if success {
+			// No longer backing off after first success
+			backingOff = false
+		}
+
+		if success && sentEntries {
+			node.mutex.Lock()
+			lastIndex, err := node.db.GetLastIndex()
+			if err == nil && node.nextIndex[nodeId] <= lastIndex {
+				node.pendingFlush[nodeId] = true
+			} else {
+				node.pendingFlush[nodeId] = false
 			}
+			pending = node.pendingFlush[nodeId]
+			node.mutex.Unlock()
+		} else if success {
+			node.mutex.Lock()
+			node.pendingFlush[nodeId] = false
+			pending = false
+			node.mutex.Unlock()
+		}
 
+		if pending {
+			timer.Reset(0)
+		} else {
 			timer.Reset(node.HeartbeatTimeout)
 		}
 	}
 }
 
-func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) {
+func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, bool, error) {
 	node.mutex.Lock()
 
 	if !node.isLeader {
 		node.mutex.Unlock()
-		return false, ErrNotLeader
+		return false, false, ErrNotLeader
 	}
 
 	if !node.Live {
 		node.mutex.Unlock()
-		return false, ErrNotAlive
+		return false, false, ErrNotAlive
 	}
 
 	if node.inFlightMessageCount[nodeId] >= constants.MaxInFlightMessageCount {
 		log.Printf("Too many in flight messages for %s: %d", nodeId, node.inFlightMessageCount[nodeId])
 		node.mutex.Unlock()
-		return false, ErrTooManyInFlightMessages
+		return false, false, ErrTooManyInFlightMessages
 	}
 
 	begin := time.Now()
@@ -218,14 +229,15 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) 
 	node.mutex.Unlock()
 
 	// Send AppendEntries
-	if len(req.Entries) > 0 {
+	sentEntries := len(req.Entries) > 0
+	if sentEntries {
 		log.Printf("Sending AppendEntries to %s with %d entries from index %d after %v", nodeId, len(req.Entries), nextIndex, time.Since(begin))
 	}
 
 	client := node.ClientMap[nodeId]
 	resp, err := client.AppendEntries(context.Background(), req)
 
-	if len(req.Entries) > 0 {
+	if sentEntries {
 		log.Printf("Received AppendEntries ack from %s after %v", nodeId, time.Since(begin))
 	}
 
@@ -234,7 +246,7 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) 
 
 	if err != nil {
 		node.mutex.Unlock()
-		return false, err
+		return sentEntries, false, err
 	}
 
 	if node.protocol == "rcp" {
@@ -281,5 +293,5 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) 
 
 	// log.Printf("Finished heartbeat to %s after %v", nodeId, time.Since(begin))
 	node.mutex.Unlock()
-	return resp.Success, nil
+	return sentEntries, resp.Success, nil
 }

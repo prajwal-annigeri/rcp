@@ -15,7 +15,6 @@ BACKOFF_DEC=100
 TIMEOUT_CONSENSUS=1000
 TIMEOUT_ELECTION_MIN=500
 TIMEOUT_ELECTION_MAX=1000
-TIMEOUT_BATCH=2
 TIMEOUT_HEARTBEAT=50
 LOGGING="false"
 PERSISTENT="false"
@@ -59,10 +58,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --et-max)
       TIMEOUT_ELECTION_MAX="$2"
-      shift 2
-      ;;
-    --bt)
-      TIMEOUT_BATCH="$2"
       shift 2
       ;;
     --ht)
@@ -118,7 +113,6 @@ echo "Timeout settings:"
 echo "Consensus:    $TIMEOUT_CONSENSUS ms"
 echo "Election Min: $TIMEOUT_ELECTION_MIN ms"
 echo "Election Max: $TIMEOUT_ELECTION_MAX ms"
-echo "Batch:        $TIMEOUT_BATCH ms"
 echo "Heartbeat:    $TIMEOUT_HEARTBEAT ms"
 
 echo ""
@@ -146,7 +140,6 @@ backoff_decrement=$BACKOFF_DEC
 consensus_timeout_ms=$TIMEOUT_CONSENSUS
 election_timeout_min_ms=$TIMEOUT_ELECTION_MIN
 election_timeout_max_ms=$TIMEOUT_ELECTION_MAX
-batch_timeout_ms=$TIMEOUT_BATCH
 heartbeat_timeout_ms=$TIMEOUT_HEARTBEAT
 EOF
 
@@ -244,7 +237,7 @@ for ip in "${PUBLIC_IPS[@]}"; do
 done
 
 echo "Downloading output from client..."
-scp -i "$KEY" -o StrictHostKeyChecking=no $USER@$CLIENT_IP:~/out.txt "./../output/protocol=$PROTOCOL-N=$N-K=$K-client=$CONCURRENT_CLIENT-batch=$BATCH_LOW,$BATCH_HIGH-fail=$FAILURE_TYPE-bt=$TIMEOUT_BATCH.txt"
+scp -i "$KEY" -o StrictHostKeyChecking=no $USER@$CLIENT_IP:~/out.txt "./../output/protocol=$PROTOCOL-N=$N-K=$K-client=$CONCURRENT_CLIENT-batch=$BATCH_LOW,$BATCH_HIGH-fail=$FAILURE_TYPE.txt"
 
 
 if [ "$LOGGING" = "true" ]; then
