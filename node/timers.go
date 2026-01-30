@@ -118,6 +118,7 @@ func (node *Node) startHeartbeatLoop(nodeId string) {
 
 						// Too many retries, failure detected
 						if retryCount > constants.FailureRetryCount {
+							node.mutex.Lock()
 							if _, failed := node.failedSet[nodeId]; !failed {
 								if _, pendingFailure := node.pendingFailureSet[nodeId]; !pendingFailure {
 									log.Printf("Failure detected on %s", nodeId)
@@ -130,6 +131,7 @@ func (node *Node) startHeartbeatLoop(nodeId string) {
 									node.AppendLogLocked(failureLog)
 								}
 							}
+							node.mutex.Unlock()
 						}
 					}
 				}
@@ -280,12 +282,10 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) 
 			node.currentTerm = resp.Term
 			node.StepDownLocked()
 		} else {
-			if backingOff {
-				if node.nextIndex[nodeId] > node.BackoffDec {
-					node.nextIndex[nodeId] -= node.BackoffDec
-				} else {
-					node.nextIndex[nodeId] = 0
-				}
+			if node.nextIndex[nodeId] > node.BackoffDec {
+				node.nextIndex[nodeId] -= node.BackoffDec
+			} else {
+				node.nextIndex[nodeId] = 0
 			}
 		}
 	}
