@@ -257,31 +257,12 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) 
 			node.matchIndex[nodeId] = node.nextIndex[nodeId] - 1
 
 			// Calculate replication
-			sortedMatchIndex := SortMapByValueDescending(node.matchIndex)
 			commitIndex := node.commitIndex
 			nodeRequired := node.replicationQuorum - 1
-
-			// TODO: OPTIONAL: Handle if pending failure node recovers
-			for _, nodeIdMatchIndexPair := range sortedMatchIndex {
-				// Don't count replication if node is failed or pending recovery
-				if _, failed := node.failedSet[nodeIdMatchIndexPair.Key]; failed {
-					continue
-				}
-
-				if _, pendingRecovery := node.pendingRecoverySet[nodeIdMatchIndexPair.Key]; pendingRecovery {
-					continue
-				}
-
-				nodeRequired -= 1
-				// log.Printf("Matched index %d and node required %d", nodeIdMatchIndexPair.Value, nodeRequired)
-
-				if nodeRequired <= 0 {
-					if nodeIdMatchIndexPair.Value > commitIndex {
-						node.commitIndex = nodeIdMatchIndexPair.Value
-						node.executeUntilLocked(node.commitIndex)
-					}
-					break
-				}
+			matchIdx, ok := quorumMatchIndex(node.matchIndex, node.failedSet, node.pendingRecoverySet, nodeRequired)
+			if ok && matchIdx > commitIndex {
+				node.commitIndex = matchIdx
+				node.executeUntilLocked(node.commitIndex)
 			}
 		}
 	} else {

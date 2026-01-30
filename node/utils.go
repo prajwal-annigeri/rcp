@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"rcp/grpc/orcapb"
-	"sort"
 	"strings"
 	"time"
 
@@ -15,24 +14,66 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-type kv struct {
-	Key   string
-	Value int64
-}
+// selectKthLargest returns the k-th largest element (1-based) in vals.
+// It mutates vals in-place.
+func selectKthLargest(vals []int64, k int) (int64, bool) {
+	if k < 1 || k > len(vals) {
+		return 0, false
+	}
+	target := k - 1
+	left, right := 0, len(vals)-1
 
-// SortMapByValueDescending returns a sorted slice of (key, value) pairs
-// from highest to lowest based on value.
-func SortMapByValueDescending(m map[string]int64) []kv {
-	sorted := make([]kv, 0, len(m))
-	for k, v := range m {
-		sorted = append(sorted, kv{k, v})
+	for left <= right {
+		pivotIndex := (left + right) / 2
+		pivotIndex = partitionDesc(vals, left, right, pivotIndex)
+		if pivotIndex == target {
+			return vals[pivotIndex], true
+		}
+		if pivotIndex > target {
+			right = pivotIndex - 1
+		} else {
+			left = pivotIndex + 1
+		}
 	}
 
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Value > sorted[j].Value
-	})
+	return 0, false
+}
 
-	return sorted
+func partitionDesc(vals []int64, left, right, pivotIndex int) int {
+	pivotValue := vals[pivotIndex]
+	vals[pivotIndex], vals[right] = vals[right], vals[pivotIndex]
+	storeIndex := left
+	for i := left; i < right; i++ {
+		if vals[i] > pivotValue {
+			vals[storeIndex], vals[i] = vals[i], vals[storeIndex]
+			storeIndex++
+		}
+	}
+	vals[right], vals[storeIndex] = vals[storeIndex], vals[right]
+	return storeIndex
+}
+
+func quorumMatchIndex(matchIndex map[string]int64, failedSet, pendingRecoverySet map[string]struct{}, required int) (int64, bool) {
+	if required <= 0 {
+		return 0, false
+	}
+
+	values := make([]int64, 0, len(matchIndex))
+	for nodeID, idx := range matchIndex {
+		if _, failed := failedSet[nodeID]; failed {
+			continue
+		}
+		if _, pendingRecovery := pendingRecoverySet[nodeID]; pendingRecovery {
+			continue
+		}
+		values = append(values, idx)
+	}
+
+	if len(values) < required {
+		return 0, false
+	}
+
+	return selectKthLargest(values, required)
 }
 
 func (node *Node) establishConns() error {
