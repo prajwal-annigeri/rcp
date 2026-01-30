@@ -80,6 +80,19 @@ func (d *MemDB) GetLogsFromIndex(index int64, maxLogs int) ([]*orcapb.LogEntry, 
 	return d.logs[index:end], nil
 }
 
+// TruncateFrom removes log entries starting at index.
+func (d *MemDB) TruncateFrom(index int64) error {
+	if index <= 0 {
+		d.logs = d.logs[:0]
+		return nil
+	}
+	if int(index) > len(d.logs) {
+		return ErrNotFound
+	}
+	d.logs = d.logs[:index]
+	return nil
+}
+
 // PrintAllLogs implements Database.
 func (d *MemDB) PrintAllLogs() error {
 	panic("unimplemented")

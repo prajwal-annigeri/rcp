@@ -1,6 +1,7 @@
 package db
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"rcp/constants"
@@ -113,6 +114,11 @@ func (d *BoltDB) GetLogAtIndex(index int64) (*orcapb.LogEntry, error) {
 // GetLogsFromIndex implements Database.
 func (d *BoltDB) GetLogsFromIndex(index int64) ([]*orcapb.LogEntry, error) {
 	panic("unimplemented")
+}
+
+// TruncateFrom implements Database.
+func (d *BoltDB) TruncateFrom(index int64) error {
+	return errors.New("unimplemented")
 }
 
 // PrintAllLogs implements Database.

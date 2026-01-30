@@ -15,6 +15,7 @@ type LogStore interface {
 	PutLogAtIndex(index int64, log *orcapb.LogEntry) error
 	GetLogAtIndex(index int64) (*orcapb.LogEntry, error)
 	GetLogsFromIndex(index int64, maxLogs int) ([]*orcapb.LogEntry, error)
+	TruncateFrom(index int64) error
 	PrintAllLogs() error
 	PrintAllLogsUnordered() error
 	GetLastIndex() (int64, error)

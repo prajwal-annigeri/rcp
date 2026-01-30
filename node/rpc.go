@@ -106,9 +106,69 @@ func (node *Node) insertLogsLocked(appendEntryReq *orcapb.AppendEntriesRequest) 
 
 	currIndex := appendEntryReq.PrevLogIndex + 1
 
-	for _, entry := range appendEntryReq.Entries {
-		node.InsertLogLocked(entry, currIndex)
-		currIndex++
+	for i, entry := range appendEntryReq.Entries {
+		existingEntry, err := node.db.GetLogAtIndex(currIndex)
+		if err == nil {
+			if existingEntry.Term == entry.Term {
+				currIndex++
+				continue
+			}
+
+			if err := node.removePendingSetsFromIndexLocked(currIndex); err != nil {
+				return err
+			}
+			if err := node.db.TruncateFrom(currIndex); err != nil && !errors.Is(err, db.ErrNotFound) {
+				return err
+			}
+
+			for _, newEntry := range appendEntryReq.Entries[i:] {
+				node.InsertLogLocked(newEntry, currIndex)
+				currIndex++
+			}
+			return nil
+		}
+
+		if errors.Is(err, db.ErrNotFound) {
+			for _, newEntry := range appendEntryReq.Entries[i:] {
+				node.InsertLogLocked(newEntry, currIndex)
+				currIndex++
+			}
+			return nil
+		}
+
+		return err
+	}
+
+	return nil
+}
+
+// removePendingSetsFromIndexLocked clears pending failure/recovery markers for truncated entries.
+// Assumes node.mutex is already locked.
+func (node *Node) removePendingSetsFromIndexLocked(start int64) error {
+	if start <= node.execIndex {
+		start = node.execIndex + 1
+	}
+	if start < 0 {
+		start = 0
+	}
+
+	maxLogs := int(^uint(0) >> 1)
+	entries, err := node.db.GetLogsFromIndex(start, maxLogs)
+	if err != nil {
+		return err
+	}
+
+	for i, entry := range entries {
+		idx := start + int64(i)
+		if idx <= node.execIndex {
+			continue
+		}
+		switch entry.LogType {
+		case orcapb.LogType_FAILURE:
+			delete(node.pendingFailureSet, entry.NodeId)
+		case orcapb.LogType_RECOVERY:
+			delete(node.pendingRecoverySet, entry.NodeId)
+		}
 	}
 
 	return nil
