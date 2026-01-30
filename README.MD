@@ -33,11 +33,6 @@ heartbeat_timeout_ms=50
 
 ## Setting up servers
 
-### Docker
-- Build docker image `docker build -t rcp .`
-- Run docker container `docker run -p {host_port}:{container_grpc_server_port} -v $(pwd)/runtime.conf:/app/runtime.conf rcp --id {node_id} --logs --config='{config JSON here}'`
-    - Example `docker run -p 8080:8080 -v $(pwd)/runtime.conf:/app/runtime.conf rcp --id S1 --logs --config='{"nodes":[{"id":"S1","port":"8080","ip":"127.0.0.1"},{"id":"S2","port":"8081","ip":"127.0.0.1"}]}'`
-
 ### MacOS
 - Run `go mod tidy` to install the required dependencies
 - Modify `nodes.json` to set number of nodes and update `runtime.conf` for runtime settings (including `k`)
