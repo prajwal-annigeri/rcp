@@ -21,8 +21,7 @@ func InitMemoryDatabase() (db *MemDB) {
 func (d *MemDB) Get(key string, bucket string) (string, error) {
 	val, ok := d.kv[fmt.Sprintf("%s/%s", bucket, key)]
 	if !ok {
-		err := fmt.Errorf("no value for key: %s in bucket %s", key, bucket)
-		return "", err
+		return "", ErrNotFound
 	}
 	return val, nil
 }

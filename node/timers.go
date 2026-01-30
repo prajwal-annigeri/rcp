@@ -21,7 +21,12 @@ func (node *Node) resetElectionTimer() {
 		default:
 		}
 	}
-	node.electionTimer.Reset(node.ElectionTimeoutMin + time.Duration(rand.Int63n(int64(node.ElectionTimeoutMax-node.ElectionTimeoutMin))))
+	delay := node.ElectionTimeoutMin
+	if node.ElectionTimeoutMax > node.ElectionTimeoutMin {
+		jitter := rand.Int63n(int64(node.ElectionTimeoutMax - node.ElectionTimeoutMin))
+		delay = node.ElectionTimeoutMin + time.Duration(jitter)
+	}
+	node.electionTimer.Reset(delay)
 }
 
 func (node *Node) monitorElectionTimer() {
@@ -61,7 +66,10 @@ func (node *Node) startReceiverLoop(entriesCh <-chan LogWithCallbackChannel) {
 					node.flushBatch()
 					batchCount = 0
 					if !timer.Stop() {
-						<-timer.C
+						select {
+						case <-timer.C:
+						default:
+						}
 					}
 				}
 
