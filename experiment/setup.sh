@@ -53,8 +53,8 @@ fi
 # Join nodes with commas
 nodes_str=$(IFS=,; echo "${nodes[*]}")
 
-# Write rcp_config
-echo "rcp.config={\"nodes\":[${nodes_str}]}" > ./run/rcp_config
+# Write orca.config
+echo "orca.config={\"nodes\":[${nodes_str}]}" > ./run/orca_config
 
 # Write nodes.json
 cat > ./run/nodes.json <<EOF
@@ -84,9 +84,9 @@ echo "Uploading client executables to $CLIENT_IP..."
 scp -i "$KEY" -o StrictHostKeyChecking=no "$FAILURE_CLIENT_EXEC_NAME" "$USER@$CLIENT_IP:~/"
 scp -i "$KEY" -o StrictHostKeyChecking=no "$YCSB_EXEC_NAME" "$USER@$CLIENT_IP:~/"
 
-echo "Uploading nodes.json, rcp_config, and workload to client..."
+echo "Uploading nodes.json, orca_config, and workload to client..."
 scp -i "$KEY" -o StrictHostKeyChecking=no ./run/nodes.json "$USER@$CLIENT_IP:~/"
-scp -i "$KEY" -o StrictHostKeyChecking=no ./run/rcp_config "$USER@$CLIENT_IP:~/"
+scp -i "$KEY" -o StrictHostKeyChecking=no ./run/orca_config "$USER@$CLIENT_IP:~/"
 scp -i "$KEY" -o StrictHostKeyChecking=no ./run/workload "$USER@$CLIENT_IP:~/"
 
 echo "Ensuring tmux is installed on $CLIENT_IP..."

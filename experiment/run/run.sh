@@ -160,7 +160,7 @@ CLIENT_IP=($(jq -r '.client_ip.value' ./../instance_ips.json))
 echo "Running client on $CLIENT_IP"
 
 echo "Starting $YCSB_EXEC"
-ssh -i "$KEY" -o StrictHostKeyChecking=no "$USER@$CLIENT_IP" "tmux new-session -d -s ycsb_session './$YCSB_EXEC load rcp -P workload -P rcp_config -p \"threadcount=$CONCURRENT_CLIENT\" -p \"verbose=$VERBOSE\" --interval 1 > out.txt'"
+ssh -i "$KEY" -o StrictHostKeyChecking=no "$USER@$CLIENT_IP" "tmux new-session -d -s ycsb_session './$YCSB_EXEC load orca -P workload -P orca_config -p \"threadcount=$CONCURRENT_CLIENT\" -p \"verbose=$VERBOSE\" --interval 1 > out.txt'"
 
 N=${#PUBLIC_IPS[@]}
 failures=""
