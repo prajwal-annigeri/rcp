@@ -252,6 +252,92 @@ func (node *Node) Healthz(ctx context.Context, req *rcppb.HealthzRequest) (*wrap
 	return &wrapperspb.BoolValue{Value: true}, nil
 }
 
+func (node *Node) Reconfigure(ctx context.Context, req *rcppb.ReconfigureRequest) (*rcppb.ClientResponse, error) {
+	if !node.Live {
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_NOT_ALIVE,
+		}, nil
+	}
+
+	node.mutex.Lock()
+	defer node.mutex.Unlock()
+
+	if node.protocol != "raft" {
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_NOT_SUPPORTED,
+			Value:   "reconfiguration is supported only when --protocol=raft",
+		}, nil
+	}
+
+	if node.reconfigMode == ReconfigModeNone {
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_NOT_SUPPORTED,
+			Value:   "reconfiguration is disabled; set --reconfig-mode=joint|recraft|orca",
+		}, nil
+	}
+
+	if !node.isLeader {
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_NOT_LEADER,
+			Value:   node.votedFor,
+		}, nil
+	}
+
+	if node.reconfigInFlight {
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_BAD_REQUEST,
+			Value:   "reconfiguration already in flight",
+		}, nil
+	}
+
+	if len(req.VoterIds) == 0 {
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_BAD_REQUEST,
+			Value:   "empty target voter set",
+		}, nil
+	}
+
+	seen := make(map[string]struct{}, len(req.VoterIds))
+	for _, nodeID := range req.VoterIds {
+		if nodeID == "" {
+			return &rcppb.ClientResponse{
+				Success: false,
+				Error:   rcppb.ErrorType_BAD_REQUEST,
+				Value:   "target voter set contains empty node ID",
+			}, nil
+		}
+
+		if _, exists := seen[nodeID]; exists {
+			return &rcppb.ClientResponse{
+				Success: false,
+				Error:   rcppb.ErrorType_BAD_REQUEST,
+				Value:   "target voter set contains duplicate node IDs",
+			}, nil
+		}
+		seen[nodeID] = struct{}{}
+
+		if _, exists := node.knownNodeSet[nodeID]; !exists {
+			return &rcppb.ClientResponse{
+				Success: false,
+				Error:   rcppb.ErrorType_BAD_REQUEST,
+				Value:   fmt.Sprintf("unknown node ID in target voter set: %s", nodeID),
+			}, nil
+		}
+	}
+
+	return &rcppb.ClientResponse{
+		Success: false,
+		Error:   rcppb.ErrorType_NOT_SUPPORTED,
+		Value:   "reconfiguration scaffolding is enabled, but transition protocol execution is not implemented yet",
+	}, nil
+}
+
 func (node *Node) Store(ctx context.Context, req *rcppb.StoreRequest) (*rcppb.ClientResponse, error) {
 	if !node.Live {
 		return &rcppb.ClientResponse{

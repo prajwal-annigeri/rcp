@@ -9,6 +9,7 @@ enum LogType {
   DELETE = 1;
   FAILURE = 2;
   RECOVERY = 3;
+  RECONFIG = 4;
 }
 
 message LogEntry {
@@ -83,12 +84,17 @@ enum ErrorType {
     BAD_REQUEST = 3;
     UNEXPECTED = 4;
     TIMEOUT = 5;
+    NOT_SUPPORTED = 6;
 }
 
 message ClientResponse {
     bool success = 1;
     ErrorType error = 2;
     string value = 3;
+}
+
+message ReconfigureRequest {
+    repeated string voterIds = 1;
 }
 
 // message PartitionReq {
@@ -113,4 +119,5 @@ service RCP {
     rpc Get(GetRequest) returns (ClientResponse) {}
     rpc Delete(DeleteRequest) returns (ClientResponse) {}
     rpc CauseFailure(CauseFailureRequest) returns (ClientResponse) {}
+    rpc Reconfigure(ReconfigureRequest) returns (ClientResponse) {}
 }

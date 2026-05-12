@@ -11,6 +11,7 @@
 | `--id`                | string | `""`             | Node ID (must match an entry in `nodes.json`)                  |
 | `--logs`              | bool   | `false`          | Enable logging                                                 |
 | `--protocol`          | string | `"rcp"`          | Consensus protocol (`raft/fraft/rcp`)                          |
+| `--reconfig-mode`     | string | `"none"`         | Reconfiguration mode (`none/joint/recraft/orca`)               |
 | `--persist`           | bool   | `false`          | Persistent or in-memory storage                                |
 | `--config`            | string | `""`             | Inline JSON string for node config (overrides `--config-file`) |
 | `--config-file`       | string | `"./nodes.json"` | Path to JSON config file                                       |
@@ -44,10 +45,16 @@
 - Modify `nodes.json` to set your nodes (IDs, ports, IPs)
 - Start each node in its own terminal window
   - Example (3 nodes):
-    - `go run main.go --id A --logs --protocol rcp --config-file ./nodes.json`
-    - `go run main.go --id B --logs --protocol rcp --config-file ./nodes.json`
-    - `go run main.go --id C --logs --protocol rcp --config-file ./nodes.json`
+    - `go run main.go --id A --logs --protocol rcp --reconfig-mode none --config-file ./nodes.json`
+    - `go run main.go --id B --logs --protocol rcp --reconfig-mode none --config-file ./nodes.json`
+    - `go run main.go --id C --logs --protocol rcp --reconfig-mode none --config-file ./nodes.json`
 - You can optionally override config per-node with `--config '{...}'` or adjust timeouts/batching with the flags above
+
+## Reconfiguration (Scaffolding)
+
+- Reconfiguration APIs are currently gated behind `--protocol=raft`.
+- `--reconfig-mode` must be one of `joint`, `recraft`, or `orca` to enable the API path.
+- Using `--reconfig-mode` with `--protocol=fraft` or `--protocol=rcp` is rejected at startup.
 
 ## YCSB (go-ycsb-rcp)
 

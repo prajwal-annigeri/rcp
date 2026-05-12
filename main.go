@@ -16,6 +16,7 @@ var (
 	nodeId             = flag.String("id", "", "Node ID")
 	logs               = flag.Bool("logs", false, "Logging")
 	protocol           = flag.String("protocol", "rcp", "raft/fraft/rcp")
+	reconfigMode       = flag.String("reconfig-mode", "none", "Reconfiguration mode (none/joint/recraft/orca)")
 	persist            = flag.Bool("persist", false, "Persistent or in-memory")
 	config             = flag.String("config", "", "node config JSON")
 	configFile         = flag.String("config-file", "./nodes.json", "node config JSON filename")
@@ -47,7 +48,7 @@ func main() {
 		log.Fatalf("protocol can either 'rcp' or 'fraft' or 'raft'")
 	}
 
-	node, err := node.NewNode(*nodeId, *protocol, *persist, *config, *configFile, *K, *batchSizeLow, *batchSizeHigh, *backoffDec, *consensusTimeout, *electionTimeoutMin, *electionTimeoutMax, *batchTimeout, *heartbeatTimeout)
+	node, err := node.NewNode(*nodeId, *protocol, *reconfigMode, *persist, *config, *configFile, *K, *batchSizeLow, *batchSizeHigh, *backoffDec, *consensusTimeout, *electionTimeoutMin, *electionTimeoutMax, *batchTimeout, *heartbeatTimeout)
 	if err != nil {
 		log.Fatalf("Error creating node: %v", err)
 	}

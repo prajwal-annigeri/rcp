@@ -19,6 +19,13 @@ import (
 var nodes []*Node
 var config ConfigFile
 
+const (
+	ReconfigModeNone    = "none"
+	ReconfigModeJoint   = "joint"
+	ReconfigModeRecraft = "recraft"
+	ReconfigModeOrca    = "orca"
+)
+
 type CallbackReply struct {
 	Value string
 	Error error
@@ -51,6 +58,7 @@ type Node struct {
 	K                 int
 	replicationQuorum int
 	protocol          string
+	reconfigMode      string
 
 	BatchSizeLow  int
 	BatchSizeHigh int
@@ -130,6 +138,14 @@ type Node struct {
 	isReady bool
 
 	stepdownChan chan struct{}
+
+	// Reconfiguration scaffolding state
+	knownNodeSet         map[string]struct{}
+	activeVoterSet       map[string]struct{}
+	pendingVoterSet      map[string]struct{}
+	reconfigInFlight     bool
+	reconfigEpoch        int64
+	reconfigCurrentPhase string
 }
 
 // struct to read in the config file
@@ -141,6 +157,7 @@ type ConfigFile struct {
 func NewNode(
 	thisNodeId,
 	protocol string,
+	reconfigMode string,
 	persistent bool,
 	configString,
 	configFile string,
@@ -153,6 +170,15 @@ func NewNode(
 	electionTimeoutMax int,
 	batchTimeout int,
 	heartbeatTimeout int) (*Node, error) {
+	rawReconfigMode := reconfigMode
+	reconfigMode = normalizeReconfigMode(reconfigMode)
+	if reconfigMode == "" {
+		return nil, fmt.Errorf("invalid reconfig mode %q: supported values are %s, %s, %s, %s", rawReconfigMode, ReconfigModeNone, ReconfigModeJoint, ReconfigModeRecraft, ReconfigModeOrca)
+	}
+
+	if protocol != "raft" && reconfigMode != ReconfigModeNone {
+		return nil, fmt.Errorf("reconfiguration is supported only when protocol=raft; got protocol=%s reconfig-mode=%s", protocol, reconfigMode)
+	}
 
 	if configString == "" {
 		// reads config file
@@ -251,6 +277,7 @@ func NewNode(
 	}
 
 	log.Printf("Replication Quorum size: %d", newNode.replicationQuorum)
+	newNode.reconfigMode = reconfigMode
 
 	// go through all the nodes defined in config file and map them to their gRPC ports
 	for _, node := range nodes {
@@ -266,6 +293,15 @@ func NewNode(
 		// newNode.failedAppendEntries.Store(thisNodeId, 0)
 		// newNode.delays.Store(node.Id, int64(0))
 	}
+
+	newNode.knownNodeSet = make(map[string]struct{}, len(nodes))
+	newNode.activeVoterSet = make(map[string]struct{}, len(nodes))
+	newNode.pendingVoterSet = make(map[string]struct{})
+	for _, cfgNode := range nodes {
+		newNode.knownNodeSet[cfgNode.Id] = struct{}{}
+		newNode.activeVoterSet[cfgNode.Id] = struct{}{}
+	}
+	newNode.reconfigCurrentPhase = "stable"
 
 	// initialize current alive to number of nodes in the config file
 	newNode.N = len(newNode.NodeAddressMap)
@@ -327,6 +363,15 @@ func (node *Node) Start() {
 		default:
 			fmt.Println("Invalid option. Please choose again.")
 		}
+	}
+}
+
+func normalizeReconfigMode(reconfigMode string) string {
+	switch reconfigMode {
+	case ReconfigModeNone, ReconfigModeJoint, ReconfigModeRecraft, ReconfigModeOrca:
+		return reconfigMode
+	default:
+		return ""
 	}
 }
 
