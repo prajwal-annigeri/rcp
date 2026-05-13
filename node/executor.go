@@ -52,6 +52,12 @@ func (node *Node) executeUntilLocked(endIndex int64) error {
 			node.failedSet[logEntry.NodeId] = struct{}{}
 		case rcppb.LogType_RECOVERY:
 			delete(node.pendingRecoverySet, logEntry.NodeId)
+		case rcppb.LogType_RECONFIG:
+			err := node.applyReconfigLogLocked(logEntry)
+			if err != nil {
+				return err
+			}
+			node.doCallback(node.execIndex + 1)
 		}
 
 		node.execIndex++

@@ -12,6 +12,20 @@ enum LogType {
   RECONFIG = 4;
 }
 
+enum ReconfigPhase {
+  RECONFIG_PHASE_UNSPECIFIED = 0;
+  RECONFIG_PHASE_TRANSITION = 1;
+  RECONFIG_PHASE_FINALIZE = 2;
+}
+
+message ReconfigLog {
+    int64 epoch = 1;
+    string mode = 2;
+    repeated string fromVoters = 3;
+    repeated string toVoters = 4;
+    ReconfigPhase phase = 5;
+}
+
 message LogEntry {
     LogType logType = 1;
     string nodeId = 2;
@@ -19,6 +33,7 @@ message LogEntry {
     string value = 4;
     string bucket = 5;
     int64 term = 6;
+    ReconfigLog reconfig = 7;
     // string callbackChannelId = 8;
 }
 

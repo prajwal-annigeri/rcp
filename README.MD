@@ -50,11 +50,13 @@
     - `go run main.go --id C --logs --protocol rcp --reconfig-mode none --config-file ./nodes.json`
 - You can optionally override config per-node with `--config '{...}'` or adjust timeouts/batching with the flags above
 
-## Reconfiguration (Scaffolding)
+## Reconfiguration
 
-- Reconfiguration APIs are currently gated behind `--protocol=raft`.
-- `--reconfig-mode` must be one of `joint`, `recraft`, or `orca` to enable the API path.
+- Reconfiguration APIs are gated behind `--protocol=raft`.
+- `--reconfig-mode` must be one of `joint`, `recraft`, or `orca` to enable reconfiguration.
 - Using `--reconfig-mode` with `--protocol=fraft` or `--protocol=rcp` is rejected at startup.
+- A `Reconfigure` request appends two `RECONFIG` log entries (`transition` and `finalize`) and waits for commit.
+- Quorum/election transition behavior for each mode is not yet applied in voting/commit logic.
 
 ## YCSB (go-ycsb-rcp)
 

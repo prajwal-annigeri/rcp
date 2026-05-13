@@ -99,6 +99,11 @@ func printMenu() {
 func (node *Node) printState() {
 	log.Printf("Term: %d\nPrev Term: %d, Prev Log Index: %d isLeader: %t\n", node.currentTerm, node.GetLastTermLocked(), node.GetLastIndexLocked(), node.isLeader)
 	log.Printf("Current alive: %d", node.N-len(node.failedSet)-len(node.pendingRecoverySet))
+	log.Printf("Reconfig mode: %s, epoch: %d, in-flight: %t, phase: %s", node.reconfigMode, node.reconfigEpoch, node.reconfigInFlight, node.reconfigCurrentPhase)
+	log.Printf("Active voters: %v", sortedIDs(node.activeVoterSet))
+	if len(node.pendingVoterSet) > 0 {
+		log.Printf("Pending voters: %v", sortedIDs(node.pendingVoterSet))
+	}
 	// log.Printf("Reachable nodes: %v", node.reachableNodes)
 	log.Println("Next Index: ")
 	var nextIndexString strings.Builder

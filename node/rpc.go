@@ -261,9 +261,9 @@ func (node *Node) Reconfigure(ctx context.Context, req *rcppb.ReconfigureRequest
 	}
 
 	node.mutex.Lock()
-	defer node.mutex.Unlock()
 
 	if node.protocol != "raft" {
+		node.mutex.Unlock()
 		return &rcppb.ClientResponse{
 			Success: false,
 			Error:   rcppb.ErrorType_NOT_SUPPORTED,
@@ -272,6 +272,7 @@ func (node *Node) Reconfigure(ctx context.Context, req *rcppb.ReconfigureRequest
 	}
 
 	if node.reconfigMode == ReconfigModeNone {
+		node.mutex.Unlock()
 		return &rcppb.ClientResponse{
 			Success: false,
 			Error:   rcppb.ErrorType_NOT_SUPPORTED,
@@ -280,6 +281,7 @@ func (node *Node) Reconfigure(ctx context.Context, req *rcppb.ReconfigureRequest
 	}
 
 	if !node.isLeader {
+		node.mutex.Unlock()
 		return &rcppb.ClientResponse{
 			Success: false,
 			Error:   rcppb.ErrorType_NOT_LEADER,
@@ -288,6 +290,7 @@ func (node *Node) Reconfigure(ctx context.Context, req *rcppb.ReconfigureRequest
 	}
 
 	if node.reconfigInFlight {
+		node.mutex.Unlock()
 		return &rcppb.ClientResponse{
 			Success: false,
 			Error:   rcppb.ErrorType_BAD_REQUEST,
@@ -296,6 +299,7 @@ func (node *Node) Reconfigure(ctx context.Context, req *rcppb.ReconfigureRequest
 	}
 
 	if len(req.VoterIds) == 0 {
+		node.mutex.Unlock()
 		return &rcppb.ClientResponse{
 			Success: false,
 			Error:   rcppb.ErrorType_BAD_REQUEST,
@@ -304,8 +308,10 @@ func (node *Node) Reconfigure(ctx context.Context, req *rcppb.ReconfigureRequest
 	}
 
 	seen := make(map[string]struct{}, len(req.VoterIds))
+	targetVoterSet := make(map[string]struct{}, len(req.VoterIds))
 	for _, nodeID := range req.VoterIds {
 		if nodeID == "" {
+			node.mutex.Unlock()
 			return &rcppb.ClientResponse{
 				Success: false,
 				Error:   rcppb.ErrorType_BAD_REQUEST,
@@ -314,6 +320,7 @@ func (node *Node) Reconfigure(ctx context.Context, req *rcppb.ReconfigureRequest
 		}
 
 		if _, exists := seen[nodeID]; exists {
+			node.mutex.Unlock()
 			return &rcppb.ClientResponse{
 				Success: false,
 				Error:   rcppb.ErrorType_BAD_REQUEST,
@@ -321,8 +328,10 @@ func (node *Node) Reconfigure(ctx context.Context, req *rcppb.ReconfigureRequest
 			}, nil
 		}
 		seen[nodeID] = struct{}{}
+		targetVoterSet[nodeID] = struct{}{}
 
 		if _, exists := node.knownNodeSet[nodeID]; !exists {
+			node.mutex.Unlock()
 			return &rcppb.ClientResponse{
 				Success: false,
 				Error:   rcppb.ErrorType_BAD_REQUEST,
@@ -331,11 +340,60 @@ func (node *Node) Reconfigure(ctx context.Context, req *rcppb.ReconfigureRequest
 		}
 	}
 
-	return &rcppb.ClientResponse{
-		Success: false,
-		Error:   rcppb.ErrorType_NOT_SUPPORTED,
-		Value:   "reconfiguration scaffolding is enabled, but transition protocol execution is not implemented yet",
-	}, nil
+	if sameSet(node.activeVoterSet, targetVoterSet) {
+		node.mutex.Unlock()
+		return &rcppb.ClientResponse{
+			Success: true,
+			Value:   "target voter set matches current configuration",
+		}, nil
+	}
+
+	entries, epoch, err := node.buildReconfigLogEntriesLocked(targetVoterSet)
+	if err != nil {
+		node.mutex.Unlock()
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_UNEXPECTED,
+			Value:   err.Error(),
+		}, nil
+	}
+
+	finalCallbackCh := make(chan CallbackReply, 1)
+
+	for i, entry := range entries {
+		idx := node.AppendLogLocked(entry)
+		if i == len(entries)-1 {
+			node.indexToCallbackChannelMap[idx] = finalCallbackCh
+		}
+	}
+
+	node.reconfigInFlight = true
+	node.reconfigEpoch = max(node.reconfigEpoch, epoch)
+
+	node.flushBatch()
+	node.mutex.Unlock()
+
+	select {
+	case callback := <-finalCallbackCh:
+		if callback.Error != nil {
+			return &rcppb.ClientResponse{
+				Success: false,
+				Error:   rcppb.ErrorType_UNEXPECTED,
+				Value:   callback.Error.Error(),
+			}, nil
+		}
+
+		return &rcppb.ClientResponse{
+			Success: true,
+			Value:   fmt.Sprintf("reconfiguration committed at epoch %d", epoch),
+		}, nil
+	case <-time.After(node.ConsensusTimeout):
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_TIMEOUT,
+			Value:   "timed out waiting for reconfiguration commit",
+		}, nil
+	}
 }
 
 func (node *Node) Store(ctx context.Context, req *rcppb.StoreRequest) (*rcppb.ClientResponse, error) {
