@@ -551,6 +551,82 @@ func (node *Node) requestVotes() {
 	node.mutex.Lock()
 	log.Println("Requesting votes start")
 
+	if node.protocol == "raft" {
+		if !node.isElectionVoterLocked(node.Id) {
+			log.Printf("Skipping election because node %s is not a voter in current configuration", node.Id)
+			node.isCandidate = false
+			node.mutex.Unlock()
+			return
+		}
+
+		node.currentTerm++
+		log.Printf("Starting election in term %d with reconfig mode %s and phase %s", node.currentTerm, node.reconfigMode, node.reconfigCurrentPhase)
+
+		node.isCandidate = true
+		node.votedFor = node.Id
+		node.resetElectionTimer()
+
+		selfVoteSet := map[string]struct{}{
+			node.Id: {},
+		}
+		if node.hasElectionQuorumLocked(selfVoteSet) {
+			node.BecomeLeaderLocked()
+			node.mutex.Unlock()
+			return
+		}
+
+		term := node.currentTerm
+		node.mutex.Unlock()
+
+		votes := map[string]struct{}{
+			node.Id: {},
+		}
+
+		votesCh := make(chan vote, len(node.ClientMap))
+		ctx, cancel := context.WithCancel(context.Background())
+		for nodeID, client := range node.ClientMap {
+			go node.sendRequestVote(client, ctx, term, votesCh, nodeID)
+		}
+
+		timeout := time.After(node.ElectionTimeoutMax)
+
+		for {
+			select {
+			case vote := <-votesCh:
+				node.mutex.Lock()
+
+				if vote.term > node.currentTerm {
+					node.currentTerm = vote.term
+					node.StepDownLocked()
+					node.mutex.Unlock()
+					cancel()
+					return
+				}
+
+				if vote.granted {
+					if node.isElectionVoterLocked(vote.nodeId) {
+						votes[vote.nodeId] = struct{}{}
+					}
+				}
+
+				if node.hasElectionQuorumLocked(votes) {
+					if node.isCandidate {
+						node.BecomeLeaderLocked()
+					}
+					node.mutex.Unlock()
+					cancel()
+					return
+				}
+
+				node.mutex.Unlock()
+			case <-timeout:
+				log.Println("Election timeout")
+				cancel()
+				return
+			}
+		}
+	}
+
 	electionQuorum := node.N - node.K
 	if node.protocol == "raft" {
 		electionQuorum = (len(nodes) / 2) + 1

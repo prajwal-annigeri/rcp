@@ -85,6 +85,98 @@ func (node *Node) buildReconfigLogEntriesLocked(targetVoterSet map[string]struct
 	return []*rcppb.LogEntry{transition, finalize}, epoch, nil
 }
 
+func majorityForSetSize(size int) int {
+	return (size / 2) + 1
+}
+
+func isMemberOfSet(nodeID string, set map[string]struct{}) bool {
+	_, ok := set[nodeID]
+	return ok
+}
+
+// This function assumes mutex is already locked.
+func (node *Node) isTransitionJointPhaseLocked() bool {
+	return node.reconfigMode == ReconfigModeJoint && node.reconfigCurrentPhase == reconfigPhaseTransition && len(node.pendingVoterSet) > 0
+}
+
+// This function assumes mutex is already locked.
+func (node *Node) isElectionVoterLocked(nodeID string) bool {
+	if node.isTransitionJointPhaseLocked() {
+		return isMemberOfSet(nodeID, node.activeVoterSet) || isMemberOfSet(nodeID, node.pendingVoterSet)
+	}
+
+	return isMemberOfSet(nodeID, node.activeVoterSet)
+}
+
+// This function assumes mutex is already locked.
+func (node *Node) hasElectionQuorumLocked(votes map[string]struct{}) bool {
+	if node.isTransitionJointPhaseLocked() {
+		oldVotes := 0
+		newVotes := 0
+
+		for voterID := range votes {
+			if isMemberOfSet(voterID, node.activeVoterSet) {
+				oldVotes++
+			}
+			if isMemberOfSet(voterID, node.pendingVoterSet) {
+				newVotes++
+			}
+		}
+
+		return oldVotes >= majorityForSetSize(len(node.activeVoterSet)) && newVotes >= majorityForSetSize(len(node.pendingVoterSet))
+	}
+
+	stableVotes := 0
+	for voterID := range votes {
+		if isMemberOfSet(voterID, node.activeVoterSet) {
+			stableVotes++
+		}
+	}
+
+	return stableVotes >= majorityForSetSize(len(node.activeVoterSet))
+}
+
+// This function assumes mutex is already locked.
+func (node *Node) isReplicatedOnVoterLocked(voterID string, index int64) bool {
+	if voterID == node.Id {
+		return node.GetLastIndexLocked() >= index
+	}
+
+	matchIdx, ok := node.matchIndex[voterID]
+	return ok && matchIdx >= index
+}
+
+// This function assumes mutex is already locked.
+func (node *Node) hasCommitQuorumForIndexLocked(index int64) bool {
+	if node.isTransitionJointPhaseLocked() {
+		oldReplicated := 0
+		newReplicated := 0
+
+		for voterID := range node.activeVoterSet {
+			if node.isReplicatedOnVoterLocked(voterID, index) {
+				oldReplicated++
+			}
+		}
+
+		for voterID := range node.pendingVoterSet {
+			if node.isReplicatedOnVoterLocked(voterID, index) {
+				newReplicated++
+			}
+		}
+
+		return oldReplicated >= majorityForSetSize(len(node.activeVoterSet)) && newReplicated >= majorityForSetSize(len(node.pendingVoterSet))
+	}
+
+	replicated := 0
+	for voterID := range node.activeVoterSet {
+		if node.isReplicatedOnVoterLocked(voterID, index) {
+			replicated++
+		}
+	}
+
+	return replicated >= majorityForSetSize(len(node.activeVoterSet))
+}
+
 // This function assumes mutex is already locked.
 func (node *Node) applyReconfigLogLocked(logEntry *rcppb.LogEntry) error {
 	if logEntry.Reconfig == nil {
@@ -122,6 +214,12 @@ func (node *Node) applyReconfigLogLocked(logEntry *rcppb.LogEntry) error {
 		node.reconfigCurrentPhase = reconfigPhaseFinalizing
 		node.activeVoterSet = cloneSet(toVoterSet)
 		node.pendingVoterSet = make(map[string]struct{})
+
+		if !isMemberOfSet(node.Id, node.activeVoterSet) {
+			node.StepDownLocked()
+			node.votedFor = ""
+		}
+
 		node.reconfigInFlight = false
 		node.reconfigCurrentPhase = reconfigPhaseStable
 		return nil

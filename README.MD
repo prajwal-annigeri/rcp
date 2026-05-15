@@ -56,7 +56,8 @@
 - `--reconfig-mode` must be one of `joint`, `recraft`, or `orca` to enable reconfiguration.
 - Using `--reconfig-mode` with `--protocol=fraft` or `--protocol=rcp` is rejected at startup.
 - A `Reconfigure` request appends two `RECONFIG` log entries (`transition` and `finalize`) and waits for commit.
-- Quorum/election transition behavior for each mode is not yet applied in voting/commit logic.
+- JOINT transition quorum behavior is applied to election and commit logic.
+- RECRAFT and ORCA transition quorum behavior is not yet applied.
 
 ## YCSB (go-ycsb-rcp)
 
@@ -73,3 +74,13 @@
 - Use the `failure_config.json` to configure the nodes and the failures
 - `cd failure_client` and `go run . --config-file "./../nodes.json" --failures "5:leader,10:non-leader,15:random,20:revive"` to run the failure client
 - Failures can be of `leader` or `non-leader` or `random`. The `time` is the time in seconds to wait from when the client started (with `go run .`) to cause the failure
+
+## Reconfiguration Client
+
+- Reconfiguration client is used to schedule reconfiguration requests at specified times.
+- In the `reconfig_client` directory, run:
+- `go run . --config-file "./../nodes.json" --reconfigs "5:A|B|C,15:A|C|D"`
+- Format is `time:v1|v2|v3`, where `time` is seconds since client start and voters are target node IDs.
+- Optional retry controls:
+- `--retries` (default `100`)
+- `--retry-delay-ms` (default `250`)

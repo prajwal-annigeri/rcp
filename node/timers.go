@@ -247,31 +247,42 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) 
 			node.nextIndex[nodeId] = nextIndex + int64(len(req.Entries))
 			node.matchIndex[nodeId] = node.nextIndex[nodeId] - 1
 
-			// Calculate replication
-			sortedMatchIndex := SortMapByValueDescending(node.matchIndex)
-			commitIndex := node.commitIndex
-			nodeRequired := node.replicationQuorum - 1
-
-			// TODO: OPTIONAL: Handle if pending failure node recovers
-			for _, nodeIdMatchIndexPair := range sortedMatchIndex {
-				// Don't count replication if node is failed or pending recovery
-				if _, failed := node.failedSet[nodeIdMatchIndexPair.Key]; failed {
-					continue
-				}
-
-				if _, pendingRecovery := node.pendingRecoverySet[nodeIdMatchIndexPair.Key]; pendingRecovery {
-					continue
-				}
-
-				nodeRequired -= 1
-				// log.Printf("Matched index %d and node required %d", nodeIdMatchIndexPair.Value, nodeRequired)
-
-				if nodeRequired <= 0 {
-					if nodeIdMatchIndexPair.Value > commitIndex {
-						node.commitIndex = nodeIdMatchIndexPair.Value
+			if node.protocol == "raft" {
+				localLastIndex := node.GetLastIndexLocked()
+				for candidateIndex := localLastIndex; candidateIndex > node.commitIndex; candidateIndex-- {
+					if node.hasCommitQuorumForIndexLocked(candidateIndex) {
+						node.commitIndex = candidateIndex
 						node.executeUntilLocked(node.commitIndex)
+						break
 					}
-					break
+				}
+			} else {
+				// Calculate replication
+				sortedMatchIndex := SortMapByValueDescending(node.matchIndex)
+				commitIndex := node.commitIndex
+				nodeRequired := node.replicationQuorum - 1
+
+				// TODO: OPTIONAL: Handle if pending failure node recovers
+				for _, nodeIdMatchIndexPair := range sortedMatchIndex {
+					// Don't count replication if node is failed or pending recovery
+					if _, failed := node.failedSet[nodeIdMatchIndexPair.Key]; failed {
+						continue
+					}
+
+					if _, pendingRecovery := node.pendingRecoverySet[nodeIdMatchIndexPair.Key]; pendingRecovery {
+						continue
+					}
+
+					nodeRequired -= 1
+					// log.Printf("Matched index %d and node required %d", nodeIdMatchIndexPair.Value, nodeRequired)
+
+					if nodeRequired <= 0 {
+						if nodeIdMatchIndexPair.Value > commitIndex {
+							node.commitIndex = nodeIdMatchIndexPair.Value
+							node.executeUntilLocked(node.commitIndex)
+						}
+						break
+					}
 				}
 			}
 		}

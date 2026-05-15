@@ -198,6 +198,14 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 		}, nil
 	}
 
+	if node.protocol == "raft" && !node.isElectionVoterLocked(requestVoteReq.CandidateId) {
+		log.Printf("Denying vote to %s because it is not a voter in current configuration", requestVoteReq.CandidateId)
+		return &rcppb.RequestVoteResponse{
+			Term:        node.currentTerm,
+			VoteGranted: false,
+		}, nil
+	}
+
 	log.Printf("Voting for %s for term %d\n", requestVoteReq.CandidateId, requestVoteReq.Term)
 	node.currentTerm = requestVoteReq.Term
 	node.votedFor = requestVoteReq.CandidateId
