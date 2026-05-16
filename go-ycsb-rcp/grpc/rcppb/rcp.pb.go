@@ -240,14 +240,17 @@ func (ErrorType) EnumDescriptor() ([]byte, []int) {
 }
 
 type ReconfigLog struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Epoch         int64                  `protobuf:"varint,1,opt,name=epoch,proto3" json:"epoch,omitempty"`
-	Mode          string                 `protobuf:"bytes,2,opt,name=mode,proto3" json:"mode,omitempty"`
-	FromVoters    []string               `protobuf:"bytes,3,rep,name=fromVoters,proto3" json:"fromVoters,omitempty"`
-	ToVoters      []string               `protobuf:"bytes,4,rep,name=toVoters,proto3" json:"toVoters,omitempty"`
-	Phase         ReconfigPhase          `protobuf:"varint,5,opt,name=phase,proto3,enum=rcppb.ReconfigPhase" json:"phase,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                       protoimpl.MessageState `protogen:"open.v1"`
+	Epoch                       int64                  `protobuf:"varint,1,opt,name=epoch,proto3" json:"epoch,omitempty"`
+	Mode                        string                 `protobuf:"bytes,2,opt,name=mode,proto3" json:"mode,omitempty"`
+	FromVoters                  []string               `protobuf:"bytes,3,rep,name=fromVoters,proto3" json:"fromVoters,omitempty"`
+	ToVoters                    []string               `protobuf:"bytes,4,rep,name=toVoters,proto3" json:"toVoters,omitempty"`
+	Phase                       ReconfigPhase          `protobuf:"varint,5,opt,name=phase,proto3,enum=rcppb.ReconfigPhase" json:"phase,omitempty"`
+	TransitionVoters            []string               `protobuf:"bytes,6,rep,name=transitionVoters,proto3" json:"transitionVoters,omitempty"`
+	TransitionElectionQuorum    int32                  `protobuf:"varint,7,opt,name=transitionElectionQuorum,proto3" json:"transitionElectionQuorum,omitempty"`
+	TransitionReplicationQuorum int32                  `protobuf:"varint,8,opt,name=transitionReplicationQuorum,proto3" json:"transitionReplicationQuorum,omitempty"`
+	unknownFields               protoimpl.UnknownFields
+	sizeCache                   protoimpl.SizeCache
 }
 
 func (x *ReconfigLog) Reset() {
@@ -313,6 +316,27 @@ func (x *ReconfigLog) GetPhase() ReconfigPhase {
 		return x.Phase
 	}
 	return ReconfigPhase_RECONFIG_PHASE_UNSPECIFIED
+}
+
+func (x *ReconfigLog) GetTransitionVoters() []string {
+	if x != nil {
+		return x.TransitionVoters
+	}
+	return nil
+}
+
+func (x *ReconfigLog) GetTransitionElectionQuorum() int32 {
+	if x != nil {
+		return x.TransitionElectionQuorum
+	}
+	return 0
+}
+
+func (x *ReconfigLog) GetTransitionReplicationQuorum() int32 {
+	if x != nil {
+		return x.TransitionReplicationQuorum
+	}
+	return 0
 }
 
 type LogEntry struct {
@@ -1015,7 +1039,7 @@ var File_rcppb_rcp_proto protoreflect.FileDescriptor
 
 const file_rcppb_rcp_proto_rawDesc = "" +
 	"\n" +
-	"\x0frcppb/rcp.proto\x12\x05rcppb\x1a\x1egoogle/protobuf/wrappers.proto\"\x9f\x01\n" +
+	"\x0frcppb/rcp.proto\x12\x05rcppb\x1a\x1egoogle/protobuf/wrappers.proto\"\xc9\x02\n" +
 	"\vReconfigLog\x12\x14\n" +
 	"\x05epoch\x18\x01 \x01(\x03R\x05epoch\x12\x12\n" +
 	"\x04mode\x18\x02 \x01(\tR\x04mode\x12\x1e\n" +
@@ -1023,7 +1047,10 @@ const file_rcppb_rcp_proto_rawDesc = "" +
 	"fromVoters\x18\x03 \x03(\tR\n" +
 	"fromVoters\x12\x1a\n" +
 	"\btoVoters\x18\x04 \x03(\tR\btoVoters\x12*\n" +
-	"\x05phase\x18\x05 \x01(\x0e2\x14.rcppb.ReconfigPhaseR\x05phase\"\xd0\x01\n" +
+	"\x05phase\x18\x05 \x01(\x0e2\x14.rcppb.ReconfigPhaseR\x05phase\x12*\n" +
+	"\x10transitionVoters\x18\x06 \x03(\tR\x10transitionVoters\x12:\n" +
+	"\x18transitionElectionQuorum\x18\a \x01(\x05R\x18transitionElectionQuorum\x12@\n" +
+	"\x1btransitionReplicationQuorum\x18\b \x01(\x05R\x1btransitionReplicationQuorum\"\xd0\x01\n" +
 	"\bLogEntry\x12(\n" +
 	"\alogType\x18\x01 \x01(\x0e2\x0e.rcppb.LogTypeR\alogType\x12\x16\n" +
 	"\x06nodeId\x18\x02 \x01(\tR\x06nodeId\x12\x10\n" +

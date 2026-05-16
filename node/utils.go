@@ -104,6 +104,12 @@ func (node *Node) printState() {
 	if len(node.pendingVoterSet) > 0 {
 		log.Printf("Pending voters: %v", sortedIDs(node.pendingVoterSet))
 	}
+	if len(node.transitionVoterSet) > 0 {
+		log.Printf("Transition voters: %v", sortedIDs(node.transitionVoterSet))
+	}
+	if node.transitionElectionQuorum > 0 || node.transitionReplicationQuorum > 0 {
+		log.Printf("Transition quorums election=%d replication=%d", node.transitionElectionQuorum, node.transitionReplicationQuorum)
+	}
 	// log.Printf("Reachable nodes: %v", node.reachableNodes)
 	log.Println("Next Index: ")
 	var nextIndexString strings.Builder

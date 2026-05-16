@@ -57,7 +57,8 @@
 - Using `--reconfig-mode` with `--protocol=fraft` or `--protocol=rcp` is rejected at startup.
 - A `Reconfigure` request appends two `RECONFIG` log entries (`transition` and `finalize`) and waits for commit.
 - JOINT transition quorum behavior is applied to election and commit logic.
-- RECRAFT and ORCA transition quorum behavior is not yet applied.
+- RECRAFT transition quorum behavior is applied to election and commit logic for pure add and pure remove changes.
+- RECRAFT mixed add+remove and ORCA transition quorum behavior are not yet applied.
 
 ## YCSB (go-ycsb-rcp)
 

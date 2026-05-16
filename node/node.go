@@ -140,12 +140,15 @@ type Node struct {
 	stepdownChan chan struct{}
 
 	// Reconfiguration scaffolding state
-	knownNodeSet         map[string]struct{}
-	activeVoterSet       map[string]struct{}
-	pendingVoterSet      map[string]struct{}
-	reconfigInFlight     bool
-	reconfigEpoch        int64
-	reconfigCurrentPhase string
+	knownNodeSet                map[string]struct{}
+	activeVoterSet              map[string]struct{}
+	pendingVoterSet             map[string]struct{}
+	transitionVoterSet          map[string]struct{}
+	transitionElectionQuorum    int
+	transitionReplicationQuorum int
+	reconfigInFlight            bool
+	reconfigEpoch               int64
+	reconfigCurrentPhase        string
 }
 
 // struct to read in the config file
@@ -297,6 +300,9 @@ func NewNode(
 	newNode.knownNodeSet = make(map[string]struct{}, len(nodes))
 	newNode.activeVoterSet = make(map[string]struct{}, len(nodes))
 	newNode.pendingVoterSet = make(map[string]struct{})
+	newNode.transitionVoterSet = make(map[string]struct{})
+	newNode.transitionElectionQuorum = 0
+	newNode.transitionReplicationQuorum = 0
 	for _, cfgNode := range nodes {
 		newNode.knownNodeSet[cfgNode.Id] = struct{}{}
 		newNode.activeVoterSet[cfgNode.Id] = struct{}{}

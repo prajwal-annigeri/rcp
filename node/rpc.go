@@ -358,6 +358,15 @@ func (node *Node) Reconfigure(ctx context.Context, req *rcppb.ReconfigureRequest
 
 	entries, epoch, err := node.buildReconfigLogEntriesLocked(targetVoterSet)
 	if err != nil {
+		if errors.Is(err, ErrInvalidReconfiguration) {
+			node.mutex.Unlock()
+			return &rcppb.ClientResponse{
+				Success: false,
+				Error:   rcppb.ErrorType_BAD_REQUEST,
+				Value:   err.Error(),
+			}, nil
+		}
+
 		node.mutex.Unlock()
 		return &rcppb.ClientResponse{
 			Success: false,
