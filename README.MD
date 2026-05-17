@@ -55,10 +55,14 @@
 - Reconfiguration APIs are gated behind `--protocol=raft`.
 - `--reconfig-mode` must be one of `joint`, `recraft`, or `orca` to enable reconfiguration.
 - Using `--reconfig-mode` with `--protocol=fraft` or `--protocol=rcp` is rejected at startup.
-- A `Reconfigure` request appends two `RECONFIG` log entries (`transition` and `finalize`) and waits for commit.
+- A `Reconfigure` request appends mode-specific `RECONFIG` entries and waits for final commit.
+- JOINT and RECRAFT append `transition -> finalize`.
+- ORCA appends `transition(step1) -> transition(step2) -> finalize`.
+- ORCA step1 resizes election quorum to the target majority first; step2 then resizes replication quorum to follow that election quorum.
 - JOINT transition quorum behavior is applied to election and commit logic.
 - RECRAFT transition quorum behavior is applied to election and commit logic for pure add and pure remove changes.
-- RECRAFT mixed add+remove and ORCA transition quorum behavior are not yet applied.
+- ORCA transition quorum behavior is applied with `step1 -> step2 -> finalize` transitions for pure add and pure remove changes.
+- RECRAFT and ORCA mixed add+remove are not yet applied.
 
 ## YCSB (go-ycsb-rcp)
 

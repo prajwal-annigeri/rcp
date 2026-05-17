@@ -146,6 +146,7 @@ type Node struct {
 	transitionVoterSet          map[string]struct{}
 	transitionElectionQuorum    int
 	transitionReplicationQuorum int
+	transitionStep              int
 	reconfigInFlight            bool
 	reconfigEpoch               int64
 	reconfigCurrentPhase        string
@@ -303,6 +304,7 @@ func NewNode(
 	newNode.transitionVoterSet = make(map[string]struct{})
 	newNode.transitionElectionQuorum = 0
 	newNode.transitionReplicationQuorum = 0
+	newNode.transitionStep = 0
 	for _, cfgNode := range nodes {
 		newNode.knownNodeSet[cfgNode.Id] = struct{}{}
 		newNode.activeVoterSet[cfgNode.Id] = struct{}{}

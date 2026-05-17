@@ -249,6 +249,7 @@ type ReconfigLog struct {
 	TransitionVoters            []string               `protobuf:"bytes,6,rep,name=transitionVoters,proto3" json:"transitionVoters,omitempty"`
 	TransitionElectionQuorum    int32                  `protobuf:"varint,7,opt,name=transitionElectionQuorum,proto3" json:"transitionElectionQuorum,omitempty"`
 	TransitionReplicationQuorum int32                  `protobuf:"varint,8,opt,name=transitionReplicationQuorum,proto3" json:"transitionReplicationQuorum,omitempty"`
+	TransitionStep              int32                  `protobuf:"varint,9,opt,name=transitionStep,proto3" json:"transitionStep,omitempty"`
 	unknownFields               protoimpl.UnknownFields
 	sizeCache                   protoimpl.SizeCache
 }
@@ -335,6 +336,13 @@ func (x *ReconfigLog) GetTransitionElectionQuorum() int32 {
 func (x *ReconfigLog) GetTransitionReplicationQuorum() int32 {
 	if x != nil {
 		return x.TransitionReplicationQuorum
+	}
+	return 0
+}
+
+func (x *ReconfigLog) GetTransitionStep() int32 {
+	if x != nil {
+		return x.TransitionStep
 	}
 	return 0
 }
@@ -1039,7 +1047,7 @@ var File_rcppb_rcp_proto protoreflect.FileDescriptor
 
 const file_rcppb_rcp_proto_rawDesc = "" +
 	"\n" +
-	"\x0frcppb/rcp.proto\x12\x05rcppb\x1a\x1egoogle/protobuf/wrappers.proto\"\xc9\x02\n" +
+	"\x0frcppb/rcp.proto\x12\x05rcppb\x1a\x1egoogle/protobuf/wrappers.proto\"\xf1\x02\n" +
 	"\vReconfigLog\x12\x14\n" +
 	"\x05epoch\x18\x01 \x01(\x03R\x05epoch\x12\x12\n" +
 	"\x04mode\x18\x02 \x01(\tR\x04mode\x12\x1e\n" +
@@ -1050,7 +1058,8 @@ const file_rcppb_rcp_proto_rawDesc = "" +
 	"\x05phase\x18\x05 \x01(\x0e2\x14.rcppb.ReconfigPhaseR\x05phase\x12*\n" +
 	"\x10transitionVoters\x18\x06 \x03(\tR\x10transitionVoters\x12:\n" +
 	"\x18transitionElectionQuorum\x18\a \x01(\x05R\x18transitionElectionQuorum\x12@\n" +
-	"\x1btransitionReplicationQuorum\x18\b \x01(\x05R\x1btransitionReplicationQuorum\"\xd0\x01\n" +
+	"\x1btransitionReplicationQuorum\x18\b \x01(\x05R\x1btransitionReplicationQuorum\x12&\n" +
+	"\x0etransitionStep\x18\t \x01(\x05R\x0etransitionStep\"\xd0\x01\n" +
 	"\bLogEntry\x12(\n" +
 	"\alogType\x18\x01 \x01(\x0e2\x0e.rcppb.LogTypeR\alogType\x12\x16\n" +
 	"\x06nodeId\x18\x02 \x01(\tR\x06nodeId\x12\x10\n" +

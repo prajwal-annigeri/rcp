@@ -179,3 +179,124 @@ func TestHasCommitQuorumForIndexRecraftTransition(t *testing.T) {
 		t.Fatalf("expected index 8 to fail recraft transition replication quorum 3")
 	}
 }
+
+func TestComputeOrcaTransitionsPureRemove(t *testing.T) {
+	n := &Node{}
+	from := makeSet("A", "B", "C", "D")
+	to := makeSet("A", "B", "C")
+
+	step1Set, step1EQ, step1RQ, step2Set, step2EQ, step2RQ, err := n.computeOrcaTransitionsLocked(from, to)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !sameSet(step1Set, makeSet("A", "B", "C")) {
+		t.Fatalf("unexpected orca step1 set: %v", sortedIDs(step1Set))
+	}
+	if step1EQ != 2 || step1RQ != 3 {
+		t.Fatalf("unexpected orca step1 quorums: election=%d replication=%d", step1EQ, step1RQ)
+	}
+	if !sameSet(step2Set, to) {
+		t.Fatalf("expected orca step2 set to match target set")
+	}
+	if step2EQ != 2 || step2RQ != 2 {
+		t.Fatalf("unexpected orca step2 quorums: election=%d replication=%d", step2EQ, step2RQ)
+	}
+}
+
+func TestComputeOrcaTransitionsPureAdd(t *testing.T) {
+	n := &Node{}
+	from := makeSet("A", "B", "C")
+	to := makeSet("A", "B", "C", "D")
+
+	step1Set, step1EQ, step1RQ, step2Set, step2EQ, step2RQ, err := n.computeOrcaTransitionsLocked(from, to)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !sameSet(step1Set, makeSet("A", "B", "C", "D")) {
+		t.Fatalf("unexpected orca step1 set: %v", sortedIDs(step1Set))
+	}
+	if step1EQ != 3 || step1RQ != 2 {
+		t.Fatalf("unexpected orca step1 quorums: election=%d replication=%d", step1EQ, step1RQ)
+	}
+	if !sameSet(step2Set, to) {
+		t.Fatalf("expected orca step2 set to match target set")
+	}
+	if step2EQ != 3 || step2RQ != 3 {
+		t.Fatalf("unexpected orca step2 quorums: election=%d replication=%d", step2EQ, step2RQ)
+	}
+}
+
+func TestComputeOrcaTransitionsRejectMixedChange(t *testing.T) {
+	n := &Node{}
+	from := makeSet("A", "B", "C")
+	to := makeSet("A", "D", "E")
+
+	_, _, _, _, _, _, err := n.computeOrcaTransitionsLocked(from, to)
+	if err == nil {
+		t.Fatalf("expected mixed change to be rejected")
+	}
+}
+
+func TestBuildReconfigLogEntriesOrcaIncludesTwoTransitions(t *testing.T) {
+	n := &Node{
+		reconfigMode:   ReconfigModeOrca,
+		reconfigEpoch:  5,
+		currentTerm:    10,
+		activeVoterSet: makeSet("A", "B", "C"),
+	}
+
+	entries, epoch, err := n.buildReconfigLogEntriesLocked(makeSet("A", "B", "C", "D"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if epoch != 6 {
+		t.Fatalf("expected epoch 6, got %d", epoch)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 log entries for orca (step1, step2, finalize), got %d", len(entries))
+	}
+
+	if entries[0].GetReconfig().GetTransitionStep() != 1 {
+		t.Fatalf("expected first transition step=1")
+	}
+	if entries[1].GetReconfig().GetTransitionStep() != 2 {
+		t.Fatalf("expected second transition step=2")
+	}
+	if entries[2].GetReconfig().GetPhase() != rcppb.ReconfigPhase_RECONFIG_PHASE_FINALIZE {
+		t.Fatalf("expected third entry to be finalize phase")
+	}
+}
+
+func TestApplyReconfigOrcaRejectsStepTwoWithoutStepOne(t *testing.T) {
+	n := &Node{
+		reconfigMode:         ReconfigModeOrca,
+		reconfigCurrentPhase: reconfigPhaseStable,
+		knownNodeSet:         makeSet("A", "B", "C", "D"),
+		activeVoterSet:       makeSet("A", "B", "C"),
+		pendingVoterSet:      makeSet(),
+		transitionVoterSet:   makeSet(),
+	}
+
+	step2 := &rcppb.LogEntry{
+		LogType: rcppb.LogType_RECONFIG,
+		Term:    1,
+		Reconfig: &rcppb.ReconfigLog{
+			Epoch:                       1,
+			Mode:                        ReconfigModeOrca,
+			FromVoters:                  []string{"A", "B", "C"},
+			ToVoters:                    []string{"A", "C", "D"},
+			Phase:                       rcppb.ReconfigPhase_RECONFIG_PHASE_TRANSITION,
+			TransitionVoters:            []string{"A", "C", "D"},
+			TransitionElectionQuorum:    2,
+			TransitionReplicationQuorum: 2,
+			TransitionStep:              2,
+		},
+	}
+
+	if err := n.applyReconfigLogLocked(step2); err == nil {
+		t.Fatalf("expected orca step2 without step1 to fail")
+	}
+}
