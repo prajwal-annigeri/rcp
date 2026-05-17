@@ -278,6 +278,7 @@ func (node *Node) buildReconfigLogEntriesLocked(targetVoterSet map[string]struct
 		}
 
 		entries = append(entries, step1, step2)
+		return entries, epoch, nil
 
 	default:
 		return nil, 0, fmt.Errorf("unknown reconfiguration mode %s", node.reconfigMode)
@@ -480,6 +481,21 @@ func (node *Node) applyReconfigLogLocked(logEntry *rcppb.LogEntry) error {
 			node.transitionElectionQuorum = electionQuorum
 			node.transitionReplicationQuorum = replicationQuorum
 			node.transitionStep = nextTransitionStep
+
+			// ORCA treats step2 as the terminal step.
+			if node.reconfigMode == ReconfigModeOrca && transitionStep == 2 {
+				node.activeVoterSet = cloneSet(toVoterSet)
+				node.pendingVoterSet = make(map[string]struct{})
+				node.resetTransitionStateLocked()
+
+				if !isMemberOfSet(node.Id, node.activeVoterSet) {
+					node.StepDownLocked()
+					node.votedFor = ""
+				}
+
+				node.reconfigInFlight = false
+				node.reconfigCurrentPhase = reconfigPhaseStable
+			}
 		default:
 			return fmt.Errorf("unknown reconfiguration mode: %s", node.reconfigMode)
 		}

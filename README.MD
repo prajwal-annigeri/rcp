@@ -57,7 +57,7 @@
 - Using `--reconfig-mode` with `--protocol=fraft` or `--protocol=rcp` is rejected at startup.
 - A `Reconfigure` request appends mode-specific `RECONFIG` entries and waits for final commit.
 - JOINT and RECRAFT append `transition -> finalize`.
-- ORCA appends `transition(step1) -> transition(step2) -> finalize`.
+- ORCA appends `transition(step1) -> transition(step2-terminal)`.
 - ORCA step1 resizes election quorum to the target majority first; step2 then resizes replication quorum to follow that election quorum.
 - JOINT transition quorum behavior is applied to election and commit logic.
 - RECRAFT transition quorum behavior is applied to election and commit logic for pure add and pure remove changes.

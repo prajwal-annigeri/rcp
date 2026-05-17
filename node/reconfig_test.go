@@ -4,6 +4,7 @@ import (
 	"rcp/db"
 	"rcp/rcppb"
 	"testing"
+	"time"
 )
 
 func makeSet(ids ...string) map[string]struct{} {
@@ -239,7 +240,7 @@ func TestComputeOrcaTransitionsRejectMixedChange(t *testing.T) {
 	}
 }
 
-func TestBuildReconfigLogEntriesOrcaIncludesTwoTransitions(t *testing.T) {
+func TestBuildReconfigLogEntriesOrcaIncludesTwoTerminalTransitions(t *testing.T) {
 	n := &Node{
 		reconfigMode:   ReconfigModeOrca,
 		reconfigEpoch:  5,
@@ -255,8 +256,8 @@ func TestBuildReconfigLogEntriesOrcaIncludesTwoTransitions(t *testing.T) {
 	if epoch != 6 {
 		t.Fatalf("expected epoch 6, got %d", epoch)
 	}
-	if len(entries) != 3 {
-		t.Fatalf("expected 3 log entries for orca (step1, step2, finalize), got %d", len(entries))
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 log entries for orca (step1, step2-terminal), got %d", len(entries))
 	}
 
 	if entries[0].GetReconfig().GetTransitionStep() != 1 {
@@ -265,8 +266,8 @@ func TestBuildReconfigLogEntriesOrcaIncludesTwoTransitions(t *testing.T) {
 	if entries[1].GetReconfig().GetTransitionStep() != 2 {
 		t.Fatalf("expected second transition step=2")
 	}
-	if entries[2].GetReconfig().GetPhase() != rcppb.ReconfigPhase_RECONFIG_PHASE_FINALIZE {
-		t.Fatalf("expected third entry to be finalize phase")
+	if entries[1].GetReconfig().GetPhase() != rcppb.ReconfigPhase_RECONFIG_PHASE_TRANSITION {
+		t.Fatalf("expected second entry to remain transition phase")
 	}
 }
 
@@ -298,5 +299,74 @@ func TestApplyReconfigOrcaRejectsStepTwoWithoutStepOne(t *testing.T) {
 
 	if err := n.applyReconfigLogLocked(step2); err == nil {
 		t.Fatalf("expected orca step2 without step1 to fail")
+	}
+}
+
+func TestApplyReconfigOrcaStepTwoFinalizesConfiguration(t *testing.T) {
+	n := &Node{
+		Id:                          "A",
+		reconfigMode:                ReconfigModeOrca,
+		reconfigCurrentPhase:        reconfigPhaseStable,
+		knownNodeSet:                makeSet("A", "B", "C", "D"),
+		activeVoterSet:              makeSet("A", "B", "C"),
+		pendingVoterSet:             makeSet(),
+		transitionVoterSet:          makeSet(),
+		transitionElectionQuorum:    0,
+		transitionReplicationQuorum: 0,
+		transitionStep:              0,
+		stepdownChan:                make(chan struct{}),
+		electionTimer:               time.NewTimer(time.Hour),
+	}
+	t.Cleanup(func() {
+		n.electionTimer.Stop()
+	})
+
+	step1 := &rcppb.LogEntry{
+		LogType: rcppb.LogType_RECONFIG,
+		Term:    1,
+		Reconfig: &rcppb.ReconfigLog{
+			Epoch:                       1,
+			Mode:                        ReconfigModeOrca,
+			FromVoters:                  []string{"A", "B", "C"},
+			ToVoters:                    []string{"A", "B", "C", "D"},
+			Phase:                       rcppb.ReconfigPhase_RECONFIG_PHASE_TRANSITION,
+			TransitionVoters:            []string{"A", "B", "C", "D"},
+			TransitionElectionQuorum:    3,
+			TransitionReplicationQuorum: 2,
+			TransitionStep:              1,
+		},
+	}
+
+	step2 := &rcppb.LogEntry{
+		LogType: rcppb.LogType_RECONFIG,
+		Term:    1,
+		Reconfig: &rcppb.ReconfigLog{
+			Epoch:                       1,
+			Mode:                        ReconfigModeOrca,
+			FromVoters:                  []string{"A", "B", "C"},
+			ToVoters:                    []string{"A", "B", "C", "D"},
+			Phase:                       rcppb.ReconfigPhase_RECONFIG_PHASE_TRANSITION,
+			TransitionVoters:            []string{"A", "B", "C", "D"},
+			TransitionElectionQuorum:    3,
+			TransitionReplicationQuorum: 3,
+			TransitionStep:              2,
+		},
+	}
+
+	if err := n.applyReconfigLogLocked(step1); err != nil {
+		t.Fatalf("unexpected step1 apply error: %v", err)
+	}
+	if err := n.applyReconfigLogLocked(step2); err != nil {
+		t.Fatalf("unexpected step2 apply error: %v", err)
+	}
+
+	if !sameSet(n.activeVoterSet, makeSet("A", "B", "C", "D")) {
+		t.Fatalf("expected active voters to finalize to target set")
+	}
+	if n.reconfigCurrentPhase != reconfigPhaseStable {
+		t.Fatalf("expected reconfig phase stable after orca step2, got %s", n.reconfigCurrentPhase)
+	}
+	if n.reconfigInFlight {
+		t.Fatalf("expected no in-flight reconfiguration after orca step2")
 	}
 }
