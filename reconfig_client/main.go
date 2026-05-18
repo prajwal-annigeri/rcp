@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
 	"rcp/rcppb"
 	"slices"
@@ -32,6 +33,15 @@ type Node struct {
 type ReconfigEntity struct {
 	Time     int64
 	VoterIDs []string
+}
+
+type ReconfigResult struct {
+	Reconfig     ReconfigEntity
+	Success      bool
+	Attempts     int
+	ContactNode  string
+	Latency      time.Duration
+	ErrorMessage string
 }
 
 type ReconfigList []ReconfigEntity
@@ -176,19 +186,36 @@ func main() {
 	}
 
 	var wg sync.WaitGroup
+	resultCh := make(chan ReconfigResult, len(reconfigs))
+
 	for _, reconfig := range reconfigs {
 		wg.Add(1)
-		go runReconfigurationAt(reconfig, &wg)
+		go runReconfigurationAt(reconfig, &wg, resultCh)
 	}
 
 	wg.Wait()
+	close(resultCh)
+
+	results := make([]ReconfigResult, 0, len(reconfigs))
+	for result := range resultCh {
+		results = append(results, result)
+	}
+
+	reportLatencyStats(results)
+
+	for _, result := range results {
+		if !result.Success {
+			os.Exit(1)
+		}
+	}
 }
 
-func runReconfigurationAt(reconfig ReconfigEntity, wg *sync.WaitGroup) {
+func runReconfigurationAt(reconfig ReconfigEntity, wg *sync.WaitGroup, resultCh chan<- ReconfigResult) {
 	defer wg.Done()
 
 	log.Printf("Scheduling reconfiguration at %d seconds to voters=%v", reconfig.Time, reconfig.VoterIDs)
 	time.Sleep(time.Duration(reconfig.Time) * time.Second)
+	begin := time.Now()
 
 	contactServer := contactNode
 	req := &rcppb.ReconfigureRequest{VoterIds: reconfig.VoterIDs}
@@ -219,7 +246,15 @@ func runReconfigurationAt(reconfig ReconfigEntity, wg *sync.WaitGroup) {
 		}
 
 		if res.Success {
-			log.Printf("Reconfiguration at t=%d succeeded via %s: %s", reconfig.Time, contactServer, res.Value)
+			latency := time.Since(begin)
+			log.Printf("Reconfiguration at t=%d succeeded via %s in %v after %d attempts: %s", reconfig.Time, contactServer, latency, attempt, res.Value)
+			resultCh <- ReconfigResult{
+				Reconfig:    reconfig,
+				Success:     true,
+				Attempts:    attempt,
+				ContactNode: contactServer,
+				Latency:     latency,
+			}
 			return
 		}
 
@@ -233,7 +268,18 @@ func runReconfigurationAt(reconfig ReconfigEntity, wg *sync.WaitGroup) {
 				contactServer = contactNode
 			}
 		case rcppb.ErrorType_BAD_REQUEST, rcppb.ErrorType_NOT_SUPPORTED:
-			log.Fatalf("Reconfiguration at t=%d rejected permanently by %s: error=%s message=%s", reconfig.Time, contactServer, res.Error.String(), res.Value)
+			latency := time.Since(begin)
+			msg := fmt.Sprintf("rejected permanently by %s: error=%s message=%s", contactServer, res.Error.String(), res.Value)
+			log.Printf("Reconfiguration at t=%d failed in %v after %d attempts: %s", reconfig.Time, latency, attempt, msg)
+			resultCh <- ReconfigResult{
+				Reconfig:     reconfig,
+				Success:      false,
+				Attempts:     attempt,
+				ContactNode:  contactServer,
+				Latency:      latency,
+				ErrorMessage: msg,
+			}
+			return
 		default:
 			log.Printf("Attempt %d/%d reconfiguration at t=%d rejected by %s: error=%s message=%s", attempt, maxTries, reconfig.Time, contactServer, res.Error.String(), res.Value)
 			contactServer = contactNode
@@ -242,5 +288,107 @@ func runReconfigurationAt(reconfig ReconfigEntity, wg *sync.WaitGroup) {
 		time.Sleep(delay)
 	}
 
-	log.Fatalf("Reconfiguration at t=%d failed after %d attempts", reconfig.Time, maxTries)
+	latency := time.Since(begin)
+	msg := fmt.Sprintf("failed after %d attempts", maxTries)
+	log.Printf("Reconfiguration at t=%d failed in %v: %s", reconfig.Time, latency, msg)
+	resultCh <- ReconfigResult{
+		Reconfig:     reconfig,
+		Success:      false,
+		Attempts:     maxTries,
+		ContactNode:  contactServer,
+		Latency:      latency,
+		ErrorMessage: msg,
+	}
+}
+
+func reportLatencyStats(results []ReconfigResult) {
+	if len(results) == 0 {
+		log.Printf("No reconfiguration events were executed.")
+		return
+	}
+
+	slices.SortFunc(results, func(a, b ReconfigResult) int {
+		switch {
+		case a.Reconfig.Time < b.Reconfig.Time:
+			return -1
+		case a.Reconfig.Time > b.Reconfig.Time:
+			return 1
+		default:
+			return strings.Compare(strings.Join(a.Reconfig.VoterIDs, "|"), strings.Join(b.Reconfig.VoterIDs, "|"))
+		}
+	})
+
+	log.Printf("=== Reconfiguration Latency Report ===")
+
+	successLatencies := make([]time.Duration, 0, len(results))
+	failures := 0
+
+	for _, result := range results {
+		if result.Success {
+			successLatencies = append(successLatencies, result.Latency)
+			log.Printf("t=%ds voters=%v status=SUCCESS latency=%v attempts=%d contact=%s",
+				result.Reconfig.Time, result.Reconfig.VoterIDs, result.Latency, result.Attempts, result.ContactNode)
+		} else {
+			failures++
+			log.Printf("t=%ds voters=%v status=FAILED latency=%v attempts=%d contact=%s error=%s",
+				result.Reconfig.Time, result.Reconfig.VoterIDs, result.Latency, result.Attempts, result.ContactNode, result.ErrorMessage)
+		}
+	}
+
+	log.Printf("=== Reconfiguration Latency Summary ===")
+	log.Printf("total=%d success=%d failed=%d", len(results), len(successLatencies), failures)
+
+	if len(successLatencies) == 0 {
+		log.Printf("No successful reconfiguration events; latency percentiles unavailable.")
+		return
+	}
+
+	slices.SortFunc(successLatencies, func(a, b time.Duration) int {
+		switch {
+		case a < b:
+			return -1
+		case a > b:
+			return 1
+		default:
+			return 0
+		}
+	})
+
+	minLatency := successLatencies[0]
+	maxLatency := successLatencies[len(successLatencies)-1]
+	var sum time.Duration
+	for _, latency := range successLatencies {
+		sum += latency
+	}
+	avgLatency := sum / time.Duration(len(successLatencies))
+
+	p50 := percentile(successLatencies, 50)
+	p90 := percentile(successLatencies, 90)
+	p95 := percentile(successLatencies, 95)
+	p99 := percentile(successLatencies, 99)
+
+	log.Printf("min=%v max=%v avg=%v p50=%v p90=%v p95=%v p99=%v",
+		minLatency, maxLatency, avgLatency, p50, p90, p95, p99)
+}
+
+func percentile(sorted []time.Duration, p float64) time.Duration {
+	if len(sorted) == 0 {
+		return 0
+	}
+	if p <= 0 {
+		return sorted[0]
+	}
+	if p >= 100 {
+		return sorted[len(sorted)-1]
+	}
+
+	// Nearest-rank percentile.
+	rank := int(math.Ceil((p / 100) * float64(len(sorted))))
+	if rank <= 0 {
+		rank = 1
+	}
+	if rank > len(sorted) {
+		rank = len(sorted)
+	}
+	return sorted[rank-1]
 }

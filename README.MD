@@ -86,6 +86,9 @@
 - In the `reconfig_client` directory, run:
 - `go run . --config-file "./../nodes.json" --reconfigs "5:A|B|C,15:A|C|D"`
 - Format is `time:v1|v2|v3`, where `time` is seconds since client start and voters are target node IDs.
+- At completion, the client prints:
+- per-event latency (success/failure, attempts, contact node)
+- aggregate latency summary for successful events (`min/max/avg/p50/p90/p95/p99`)
 - Optional retry controls:
 - `--retries` (default `100`)
 - `--retry-delay-ms` (default `250`)
