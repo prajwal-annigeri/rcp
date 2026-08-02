@@ -1,1 +1,1 @@
-zip -r experiment/rcp.zip . -x "experiment/*" "go-ycsb-rcp/*" ".git/*" ".DS_Store"
+zip -r experiment/rcp.zip . -x "experiment/*" ".git/*" ".DS_Store"

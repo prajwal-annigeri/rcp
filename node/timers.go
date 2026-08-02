@@ -86,6 +86,24 @@ func (node *Node) flushBatch() {
 	}
 }
 
+// This function assumes mutex is already locked.
+// Raft commit advancement must be sequential so reconfiguration transition
+// entries are applied before subsequent finalize entries are evaluated.
+func (node *Node) advanceRaftCommitIndexLocked() {
+	localLastIndex := node.GetLastIndexLocked()
+	for candidateIndex := node.commitIndex + 1; candidateIndex <= localLastIndex; candidateIndex++ {
+		if !node.hasCommitQuorumForIndexLocked(candidateIndex) {
+			break
+		}
+
+		node.commitIndex = candidateIndex
+		if err := node.executeUntilLocked(node.commitIndex); err != nil {
+			log.Printf("Error executing committed logs up to %d: %v", node.commitIndex, err)
+			break
+		}
+	}
+}
+
 func (node *Node) startHeartbeatLoop(nodeId string) {
 	log.Printf("Starting a heartbeat loop for node %s", nodeId)
 
@@ -243,46 +261,47 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) 
 	}
 
 	if resp.Success {
-		if len(req.Entries) > 0 {
-			node.nextIndex[nodeId] = nextIndex + int64(len(req.Entries))
-			node.matchIndex[nodeId] = node.nextIndex[nodeId] - 1
+		// Successful AppendEntries acknowledges at least PrevLogIndex.
+		// This is important after leadership changes where heartbeats can be
+		// empty; without this, matchIndex can remain stale and block commits.
+		ackedIndex := req.PrevLogIndex + int64(len(req.Entries))
+		if ackedIndex >= 0 {
+			if currentMatch, ok := node.matchIndex[nodeId]; !ok || ackedIndex > currentMatch {
+				node.matchIndex[nodeId] = ackedIndex
+			}
+			if currentNext, ok := node.nextIndex[nodeId]; !ok || node.matchIndex[nodeId]+1 > currentNext {
+				node.nextIndex[nodeId] = node.matchIndex[nodeId] + 1
+			}
+		}
 
-			if node.protocol == "raft" {
-				localLastIndex := node.GetLastIndexLocked()
-				for candidateIndex := localLastIndex; candidateIndex > node.commitIndex; candidateIndex-- {
-					if node.hasCommitQuorumForIndexLocked(candidateIndex) {
-						node.commitIndex = candidateIndex
-						node.executeUntilLocked(node.commitIndex)
-						break
-					}
+		if node.protocol == "raft" {
+			node.advanceRaftCommitIndexLocked()
+		} else if len(req.Entries) > 0 {
+			// Calculate replication for RCP only when new entries are sent.
+			sortedMatchIndex := SortMapByValueDescending(node.matchIndex)
+			commitIndex := node.commitIndex
+			nodeRequired := node.replicationQuorum - 1
+
+			// TODO: OPTIONAL: Handle if pending failure node recovers
+			for _, nodeIdMatchIndexPair := range sortedMatchIndex {
+				// Don't count replication if node is failed or pending recovery
+				if _, failed := node.failedSet[nodeIdMatchIndexPair.Key]; failed {
+					continue
 				}
-			} else {
-				// Calculate replication
-				sortedMatchIndex := SortMapByValueDescending(node.matchIndex)
-				commitIndex := node.commitIndex
-				nodeRequired := node.replicationQuorum - 1
 
-				// TODO: OPTIONAL: Handle if pending failure node recovers
-				for _, nodeIdMatchIndexPair := range sortedMatchIndex {
-					// Don't count replication if node is failed or pending recovery
-					if _, failed := node.failedSet[nodeIdMatchIndexPair.Key]; failed {
-						continue
+				if _, pendingRecovery := node.pendingRecoverySet[nodeIdMatchIndexPair.Key]; pendingRecovery {
+					continue
+				}
+
+				nodeRequired -= 1
+				// log.Printf("Matched index %d and node required %d", nodeIdMatchIndexPair.Value, nodeRequired)
+
+				if nodeRequired <= 0 {
+					if nodeIdMatchIndexPair.Value > commitIndex {
+						node.commitIndex = nodeIdMatchIndexPair.Value
+						node.executeUntilLocked(node.commitIndex)
 					}
-
-					if _, pendingRecovery := node.pendingRecoverySet[nodeIdMatchIndexPair.Key]; pendingRecovery {
-						continue
-					}
-
-					nodeRequired -= 1
-					// log.Printf("Matched index %d and node required %d", nodeIdMatchIndexPair.Value, nodeRequired)
-
-					if nodeRequired <= 0 {
-						if nodeIdMatchIndexPair.Value > commitIndex {
-							node.commitIndex = nodeIdMatchIndexPair.Value
-							node.executeUntilLocked(node.commitIndex)
-						}
-						break
-					}
+					break
 				}
 			}
 		}
@@ -290,6 +309,7 @@ func (node *Node) sendHeartbeatTo(nodeId string, backingOff bool) (bool, error) 
 		// TODO: Should this be here?
 		if resp.Term > node.currentTerm {
 			node.currentTerm = resp.Term
+			node.votedFor = ""
 			node.StepDownLocked()
 		} else {
 			if backingOff {

@@ -150,6 +150,7 @@ type Node struct {
 	reconfigInFlight            bool
 	reconfigEpoch               int64
 	reconfigCurrentPhase        string
+	lastLeaderContact           time.Time
 }
 
 // struct to read in the config file
@@ -290,7 +291,7 @@ func NewNode(
 			newNode.HttpPort = node.HttpPort
 			newNode.Port = node.Port
 		}
-		newNode.NodeAddressMap[node.Id] = fmt.Sprintf("%s:%s", node.IP, node.Port)
+		newNode.NodeAddressMap[node.Id] = fmt.Sprintf("%s:%s", normalizeDialHost(node.IP), node.Port)
 		newNode.inFlightMessageCount[node.Id] = 0
 		// newNode.serverStatusMap.Store(node.Id, true)
 		// newNode.reachableNodes[node.Id] = struct{}{}
@@ -310,6 +311,7 @@ func NewNode(
 		newNode.activeVoterSet[cfgNode.Id] = struct{}{}
 	}
 	newNode.reconfigCurrentPhase = "stable"
+	newNode.lastLeaderContact = time.Now()
 
 	// initialize current alive to number of nodes in the config file
 	newNode.N = len(newNode.NodeAddressMap)
@@ -352,26 +354,8 @@ func (node *Node) Start() {
 
 	// go node.callbacker()
 
-	for {
-		printMenu()
-		var input string
-		fmt.Scan(&input)
-
-		switch input {
-		case "2":
-			node.db.PrintAllLogs()
-
-		// case "3":
-		// 	err := node.db.PrintAllLogsUnordered()
-		// 	if err != nil {
-		// 		log.Printf("Error printing all logs: %v\n", err)
-		// 	}
-		case "4":
-			node.printState()
-		default:
-			fmt.Println("Invalid option. Please choose again.")
-		}
-	}
+	// Keep the node process alive in headless mode.
+	select {}
 }
 
 func normalizeReconfigMode(reconfigMode string) string {
@@ -381,6 +365,13 @@ func normalizeReconfigMode(reconfigMode string) string {
 	default:
 		return ""
 	}
+}
+
+func normalizeDialHost(host string) string {
+	if host == "localhost" {
+		return "127.0.0.1"
+	}
+	return host
 }
 
 // This function assume mutex is already locked
@@ -472,10 +463,21 @@ func (node *Node) HandleDelete(key string, bucket string) (string, error) {
 // This function assume mutex is already locked
 func (node *Node) StepDownLocked() {
 	// Shutdown all replication loop
-	close(node.stepdownChan)
+	if node.stepdownChan != nil {
+		close(node.stepdownChan)
+	}
 
 	node.isLeader = false
 	node.isCandidate = false
+
+	// "in-flight while stable" is a leader-local speculative request flag
+	// (set when a leader appends reconfig entries but before they execute).
+	// If this leader steps down before commit, clear it so a future leader can
+	// accept new reconfiguration requests.
+	if node.reconfigCurrentPhase == reconfigPhaseStable {
+		node.reconfigInFlight = false
+	}
+
 	node.stepdownChan = make(chan struct{})
 
 	// log.Println("Reset election timer")
@@ -561,7 +563,7 @@ func (node *Node) requestVotes() {
 
 	if node.protocol == "raft" {
 		if !node.isElectionVoterLocked(node.Id) {
-			log.Printf("Skipping election because node %s is not a voter in current configuration", node.Id)
+			log.Printf("Skipping election because node %s is not an election voter in current configuration phase", node.Id)
 			node.isCandidate = false
 			node.mutex.Unlock()
 			return
@@ -605,6 +607,7 @@ func (node *Node) requestVotes() {
 
 				if vote.term > node.currentTerm {
 					node.currentTerm = vote.term
+					node.votedFor = ""
 					node.StepDownLocked()
 					node.mutex.Unlock()
 					cancel()
@@ -672,6 +675,7 @@ func (node *Node) requestVotes() {
 
 			if vote.term > node.currentTerm {
 				node.currentTerm = vote.term
+				node.votedFor = ""
 				node.StepDownLocked()
 				node.mutex.Unlock()
 				cancel()

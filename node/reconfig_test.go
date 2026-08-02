@@ -271,15 +271,64 @@ func TestBuildReconfigLogEntriesOrcaIncludesTwoTerminalTransitions(t *testing.T)
 	}
 }
 
-func TestApplyReconfigOrcaRejectsStepTwoWithoutStepOne(t *testing.T) {
+func TestApplyReconfigTransitionIgnoresStaleMismatchedFromVoters(t *testing.T) {
 	n := &Node{
+		reconfigMode:         ReconfigModeJoint,
+		reconfigCurrentPhase: reconfigPhaseStable,
+		reconfigEpoch:        2,
+		knownNodeSet:         makeSet("A", "B", "C", "D"),
+		activeVoterSet:       makeSet("A", "C", "D"),
+		pendingVoterSet:      makeSet(),
+		transitionVoterSet:   makeSet(),
+	}
+
+	entry := &rcppb.LogEntry{
+		LogType: rcppb.LogType_RECONFIG,
+		Term:    1,
+		Reconfig: &rcppb.ReconfigLog{
+			Epoch:            1,
+			Mode:             ReconfigModeJoint,
+			FromVoters:       []string{"A", "B", "D"},
+			ToVoters:         []string{"A", "C", "D"},
+			Phase:            rcppb.ReconfigPhase_RECONFIG_PHASE_TRANSITION,
+			TransitionVoters: []string{"A", "B", "C", "D"},
+			TransitionStep:   1,
+		},
+	}
+
+	if err := n.applyReconfigLogLocked(entry); err != nil {
+		t.Fatalf("unexpected apply error: %v", err)
+	}
+
+	if !sameSet(n.activeVoterSet, makeSet("A", "C", "D")) {
+		t.Fatalf("expected active voters to remain unchanged for stale mismatch")
+	}
+	if len(n.pendingVoterSet) != 0 {
+		t.Fatalf("expected pending voters to remain empty for stale mismatch")
+	}
+	if n.reconfigCurrentPhase != reconfigPhaseStable {
+		t.Fatalf("expected stable phase, got %s", n.reconfigCurrentPhase)
+	}
+	if n.reconfigInFlight {
+		t.Fatalf("expected no in-flight reconfiguration for stale mismatch")
+	}
+}
+
+func TestApplyReconfigOrcaStepTwoWithoutStepOneAppliesTerminalState(t *testing.T) {
+	n := &Node{
+		Id:                   "A",
 		reconfigMode:         ReconfigModeOrca,
 		reconfigCurrentPhase: reconfigPhaseStable,
 		knownNodeSet:         makeSet("A", "B", "C", "D"),
 		activeVoterSet:       makeSet("A", "B", "C"),
 		pendingVoterSet:      makeSet(),
 		transitionVoterSet:   makeSet(),
+		stepdownChan:         make(chan struct{}),
+		electionTimer:        time.NewTimer(time.Hour),
 	}
+	t.Cleanup(func() {
+		n.electionTimer.Stop()
+	})
 
 	step2 := &rcppb.LogEntry{
 		LogType: rcppb.LogType_RECONFIG,
@@ -297,8 +346,17 @@ func TestApplyReconfigOrcaRejectsStepTwoWithoutStepOne(t *testing.T) {
 		},
 	}
 
-	if err := n.applyReconfigLogLocked(step2); err == nil {
-		t.Fatalf("expected orca step2 without step1 to fail")
+	if err := n.applyReconfigLogLocked(step2); err != nil {
+		t.Fatalf("expected step2-only apply to succeed, got error: %v", err)
+	}
+	if !sameSet(n.activeVoterSet, makeSet("A", "C", "D")) {
+		t.Fatalf("unexpected active voter set after step2-only apply: %v", sortedIDs(n.activeVoterSet))
+	}
+	if n.reconfigCurrentPhase != reconfigPhaseStable {
+		t.Fatalf("expected stable phase after step2-only apply, got %s", n.reconfigCurrentPhase)
+	}
+	if n.reconfigInFlight {
+		t.Fatalf("expected no in-flight reconfiguration after step2-only apply")
 	}
 }
 

@@ -29,9 +29,9 @@ After creating a key pair, we need to build the executable files for easier dist
 3. Initialize Terraform script `terraform init`.
 4. Run Terraform script `terraform apply`. Take note of the output, it will show the public IP of the instance.
 5. At this point, an AWS EC2 instance is created to build the code.
-6. Go back to the root folder `cd ..`.
-7. Run the build script `./build.sh [PUBLIC_IP] [CODE_ZIP_FILE_NAME] [YCSB_ZIP_FILE_NAME]`. This will build the code and download the executables in the root directory.
-8. Files under the name of `app`, `failure-client`, and `go-ycsb` will appear after the build is done, these are the executable files.
+6. Go back to the root folder `cd ../..`.
+7. Run the build script `./build.sh [PUBLIC_IP] [CODE_ZIP_FILE_NAME]`. This will build the code and download the executables in the root directory.
+8. Files under the name of `app`, `failure-client`, `reconfig-client`, and `go-ycsb` will appear after the build is done, these are the executable files.
 9. Go back to the build directory `cd build` and destroy your AWS instance `terraform destroy`.
 
 Note:
@@ -44,7 +44,7 @@ cd terraform/build
 terraform init
 terraform apply
 cd ../..
-./build.sh 192.168.0.0 rcp.zip go-ycsb-rcp.zip
+./build.sh 192.168.0.0 rcp.zip
 cd terraform/build
 terraform destroy
 ```
@@ -104,21 +104,6 @@ Example:
 cd run
 ./run.sh --protocol rcp --K 2 --bt 5 --batch-low 256 --batch-high 512 --client 256 --time 30 --failure None
 ```
-
-### Notes
-
-For non-geodistributed, the best batch timeout is 2 at ~37k tps with private IP and ~35k with public IP.
-
-For geodistributed with public IP, the best batch timeout is 4 at ~19k tps with the right leader, ~14-15k tps with not-so-right leader, ~8k with far leader
-
-For geodistributed with private IP, the best batch timeout is 4 at ~13k tps with not-so-right leader
-
-For geodistributed with 7 nodes, the best is batch size and client 512 at ~4k tps with client in us-east-1, leader in eu-west-1, need to double election and consensus timeout
-Somehow if leader is near, i.e. us-west-1, leader election is triggered
-Looks like with batch size and client 256 at ~2k tps, there might not be any problem
-
-Total availability zone is 25 in North America
-We can put all in 12 AZ and client in one other AZ, all in the US, 3 AZ per region
 
 ## Others
 

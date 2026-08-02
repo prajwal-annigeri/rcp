@@ -4,6 +4,7 @@ USER="ec2-user"
 KEY="key"
 APP_EXEC_NAME="app"
 FAILURE_CLIENT_EXEC_NAME="failure-client"
+RECONFIG_CLIENT_EXEC_NAME="reconfig-client"
 YCSB_EXEC_NAME="go-ycsb"
 
 PORT=8080
@@ -82,6 +83,7 @@ CLIENT_IP=($(jq -r '.client_ip.value' instance_ips.json))
 
 echo "Uploading client executables to $CLIENT_IP..."
 scp -i "$KEY" -o StrictHostKeyChecking=no "$FAILURE_CLIENT_EXEC_NAME" "$USER@$CLIENT_IP:~/"
+scp -i "$KEY" -o StrictHostKeyChecking=no "$RECONFIG_CLIENT_EXEC_NAME" "$USER@$CLIENT_IP:~/"
 scp -i "$KEY" -o StrictHostKeyChecking=no "$YCSB_EXEC_NAME" "$USER@$CLIENT_IP:~/"
 
 echo "Uploading nodes.json, orca_config, and workload to client..."

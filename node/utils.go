@@ -86,15 +86,6 @@ func (node *Node) checkHealth(nodeID string) {
 	}
 }
 
-func printMenu() {
-	fmt.Println("\nMenu:")
-	fmt.Println("2. Print Log")
-	fmt.Println("3. Print All Logs Unordered")
-	fmt.Println("4. Print State")
-	fmt.Println("0. Exit")
-	fmt.Print("Choose an option: ")
-}
-
 // utility function to print state of node
 func (node *Node) printState() {
 	log.Printf("Term: %d\nPrev Term: %d, Prev Log Index: %d isLeader: %t\n", node.currentTerm, node.GetLastTermLocked(), node.GetLastIndexLocked(), node.isLeader)

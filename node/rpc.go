@@ -39,14 +39,20 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 		}, status.Error(codes.Aborted, fmt.Sprintf("%s denied append because its term is %d which is greater than %d", node.Id, node.currentTerm, appendEntryReq.Term))
 	}
 
+	if node.protocol == "raft" && !node.isElectionVoterLocked(appendEntryReq.LeaderId) {
+		log.Printf("Denying append from %s because it is not an election voter in current configuration phase", appendEntryReq.LeaderId)
+		return &rcppb.AppendEntriesResponse{
+			Term:    node.currentTerm,
+			Success: false,
+		}, nil
+	}
+
 	// Update term and convert to follower if needed
 	if node.currentTerm < appendEntryReq.Term {
 		node.currentTerm = appendEntryReq.Term
+		node.votedFor = ""
 		node.StepDownLocked()
 	}
-
-	// log.Println("Reset election timer")
-	node.resetElectionTimer()
 
 	// Check if node is outdated
 	if appendEntryReq.PrevLogIndex >= 0 {
@@ -84,6 +90,15 @@ func (node *Node) AppendEntries(ctx context.Context, appendEntryReq *rcppb.Appen
 			log.Printf("Error executing: %v", err)
 		}
 	}
+
+	if node.protocol == "raft" {
+		// Only accepted AppendEntries should refresh liveness of the leader.
+		node.lastLeaderContact = time.Now()
+		node.votedFor = appendEntryReq.LeaderId
+	}
+
+	// Only reset election timer for accepted AppendEntries.
+	node.resetElectionTimer()
 
 	if len(appendEntryReq.Entries) > 0 {
 		log.Printf("Time for appendEntries with %d entries: %v", len(appendEntryReq.Entries), time.Since(begin))
@@ -163,6 +178,32 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 	node.mutex.Lock()
 	defer node.mutex.Unlock()
 
+	if node.protocol == "raft" && !node.isElectionVoterLocked(requestVoteReq.CandidateId) {
+		log.Printf("Denying vote to %s because it is not an election voter in current configuration phase", requestVoteReq.CandidateId)
+		return &rcppb.RequestVoteResponse{
+			Term:        node.currentTerm,
+			VoteGranted: false,
+		}, nil
+	}
+
+	if node.protocol == "raft" && !node.isElectionVoterLocked(node.Id) {
+		log.Printf("Denying vote to %s because node %s is not an election voter in current configuration phase", requestVoteReq.CandidateId, node.Id)
+		return &rcppb.RequestVoteResponse{
+			Term:        node.currentTerm,
+			VoteGranted: false,
+		}, nil
+	}
+
+	if node.protocol == "raft" && requestVoteReq.Term >= node.currentTerm {
+		if time.Since(node.lastLeaderContact) < node.ElectionTimeoutMin {
+			log.Printf("Ignoring RequestVote from %s at term %d because leader was heard from recently (%v ago)", requestVoteReq.CandidateId, requestVoteReq.Term, time.Since(node.lastLeaderContact))
+			return &rcppb.RequestVoteResponse{
+				Term:        node.currentTerm,
+				VoteGranted: false,
+			}, nil
+		}
+	}
+
 	// Reject if term is lower
 	if requestVoteReq.Term < node.currentTerm {
 		log.Printf("Denying vote to %s as my term is greater", requestVoteReq.CandidateId)
@@ -198,18 +239,13 @@ func (node *Node) RequestVote(ctx context.Context, requestVoteReq *rcppb.Request
 		}, nil
 	}
 
-	if node.protocol == "raft" && !node.isElectionVoterLocked(requestVoteReq.CandidateId) {
-		log.Printf("Denying vote to %s because it is not a voter in current configuration", requestVoteReq.CandidateId)
-		return &rcppb.RequestVoteResponse{
-			Term:        node.currentTerm,
-			VoteGranted: false,
-		}, nil
-	}
-
 	log.Printf("Voting for %s for term %d\n", requestVoteReq.CandidateId, requestVoteReq.Term)
 	node.currentTerm = requestVoteReq.Term
 	node.votedFor = requestVoteReq.CandidateId
 	node.StepDownLocked()
+	if node.protocol == "raft" {
+		node.lastLeaderContact = time.Now()
+	}
 
 	return &rcppb.RequestVoteResponse{
 		Term:        node.currentTerm,
@@ -289,11 +325,12 @@ func (node *Node) Reconfigure(ctx context.Context, req *rcppb.ReconfigureRequest
 	}
 
 	if !node.isLeader {
+		leaderHint := node.leaderHintLocked()
 		node.mutex.Unlock()
 		return &rcppb.ClientResponse{
 			Success: false,
 			Error:   rcppb.ErrorType_NOT_LEADER,
-			Value:   node.votedFor,
+			Value:   leaderHint,
 		}, nil
 	}
 
@@ -348,7 +385,87 @@ func (node *Node) Reconfigure(ctx context.Context, req *rcppb.ReconfigureRequest
 		}
 	}
 
+	// Force a linearization barrier before evaluating membership-dependent
+	// reconfiguration logic. This ensures we execute any previously committed
+	// reconfig entries before deciding no-op vs new transition.
+	barrierCallbackCh := make(chan CallbackReply, 1)
+	barrierIdx := node.AppendLogLocked(&rcppb.LogEntry{
+		LogType: rcppb.LogType_RECONFIG,
+		Term:    node.currentTerm,
+		Reconfig: &rcppb.ReconfigLog{
+			Mode: reconfigBarrierMode,
+		},
+	})
+	node.indexToCallbackChannelMap[barrierIdx] = barrierCallbackCh
+	node.flushBatch()
+	node.mutex.Unlock()
+
+	select {
+	case callback := <-barrierCallbackCh:
+		if callback.Error != nil {
+			return &rcppb.ClientResponse{
+				Success: false,
+				Error:   rcppb.ErrorType_UNEXPECTED,
+				Value:   callback.Error.Error(),
+			}, nil
+		}
+	case <-time.After(node.ConsensusTimeout):
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_TIMEOUT,
+			Value:   "timed out waiting for leader barrier commit before reconfiguration",
+		}, nil
+	}
+
+	node.mutex.Lock()
+
+	if !node.Live {
+		node.mutex.Unlock()
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_NOT_ALIVE,
+		}, nil
+	}
+
+	if node.protocol != "raft" {
+		node.mutex.Unlock()
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_NOT_SUPPORTED,
+			Value:   "reconfiguration is supported only when --protocol=raft",
+		}, nil
+	}
+
+	if node.reconfigMode == ReconfigModeNone {
+		node.mutex.Unlock()
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_NOT_SUPPORTED,
+			Value:   "reconfiguration is disabled; set --reconfig-mode=joint|recraft|orca",
+		}, nil
+	}
+
+	if !node.isLeader {
+		leaderHint := node.leaderHintLocked()
+		node.mutex.Unlock()
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_NOT_LEADER,
+			Value:   leaderHint,
+		}, nil
+	}
+
+	if node.reconfigInFlight {
+		node.mutex.Unlock()
+		return &rcppb.ClientResponse{
+			Success: false,
+			Error:   rcppb.ErrorType_BAD_REQUEST,
+			Value:   "reconfiguration already in flight",
+		}, nil
+	}
+
 	if sameSet(node.activeVoterSet, targetVoterSet) {
+		log.Printf("Reconfigure no-op: target voters already active=%v", sortedIDs(node.activeVoterSet))
 		node.mutex.Unlock()
 		return &rcppb.ClientResponse{
 			Success: true,
@@ -375,42 +492,86 @@ func (node *Node) Reconfigure(ctx context.Context, req *rcppb.ReconfigureRequest
 		}, nil
 	}
 
-	finalCallbackCh := make(chan CallbackReply, 1)
-
-	for i, entry := range entries {
-		idx := node.AppendLogLocked(entry)
-		if i == len(entries)-1 {
-			node.indexToCallbackChannelMap[idx] = finalCallbackCh
-		}
-	}
+	log.Printf("Reconfigure start: epoch=%d mode=%s from=%v to=%v entries=%d", epoch, node.reconfigMode, sortedIDs(node.activeVoterSet), sortedIDs(targetVoterSet), len(entries))
 
 	node.reconfigInFlight = true
 	node.reconfigEpoch = max(node.reconfigEpoch, epoch)
 
-	node.flushBatch()
-	node.mutex.Unlock()
+	for i, entry := range entries {
+		step := i + 1
+		stepCallbackCh := make(chan CallbackReply, 1)
+		idx := node.AppendLogLocked(entry)
+		node.indexToCallbackChannelMap[idx] = stepCallbackCh
+		log.Printf("Reconfigure epoch=%d mode=%s step=%d/%d appended at index=%d", epoch, node.reconfigMode, step, len(entries), idx)
 
-	select {
-	case callback := <-finalCallbackCh:
-		if callback.Error != nil {
+		node.flushBatch()
+		node.mutex.Unlock()
+
+		select {
+		case callback := <-stepCallbackCh:
+			if callback.Error != nil {
+				return &rcppb.ClientResponse{
+					Success: false,
+					Error:   rcppb.ErrorType_UNEXPECTED,
+					Value:   callback.Error.Error(),
+				}, nil
+			}
+		case <-time.After(node.ConsensusTimeout):
 			return &rcppb.ClientResponse{
 				Success: false,
-				Error:   rcppb.ErrorType_UNEXPECTED,
-				Value:   callback.Error.Error(),
+				Error:   rcppb.ErrorType_TIMEOUT,
+				Value:   fmt.Sprintf("timed out waiting for reconfiguration step %d/%d commit", step, len(entries)),
 			}, nil
 		}
 
-		return &rcppb.ClientResponse{
-			Success: true,
-			Value:   fmt.Sprintf("reconfiguration committed at epoch %d", epoch),
-		}, nil
-	case <-time.After(node.ConsensusTimeout):
-		return &rcppb.ClientResponse{
-			Success: false,
-			Error:   rcppb.ErrorType_TIMEOUT,
-			Value:   "timed out waiting for reconfiguration commit",
-		}, nil
+		if step == len(entries) {
+			return &rcppb.ClientResponse{
+				Success: true,
+				Value:   fmt.Sprintf("reconfiguration committed at epoch %d", epoch),
+			}, nil
+		}
+
+		node.mutex.Lock()
+		if !node.Live {
+			node.mutex.Unlock()
+			return &rcppb.ClientResponse{
+				Success: false,
+				Error:   rcppb.ErrorType_NOT_ALIVE,
+			}, nil
+		}
+		if node.protocol != "raft" {
+			node.mutex.Unlock()
+			return &rcppb.ClientResponse{
+				Success: false,
+				Error:   rcppb.ErrorType_NOT_SUPPORTED,
+				Value:   "reconfiguration is supported only when --protocol=raft",
+			}, nil
+		}
+		if node.reconfigMode == ReconfigModeNone {
+			node.mutex.Unlock()
+			return &rcppb.ClientResponse{
+				Success: false,
+				Error:   rcppb.ErrorType_NOT_SUPPORTED,
+				Value:   "reconfiguration is disabled; set --reconfig-mode=joint|recraft|orca",
+			}, nil
+		}
+		if !node.isLeader {
+			leaderHint := node.leaderHintLocked()
+			node.mutex.Unlock()
+			return &rcppb.ClientResponse{
+				Success: false,
+				Error:   rcppb.ErrorType_NOT_LEADER,
+				Value:   leaderHint,
+			}, nil
+		}
 	}
+
+	// Unreachable, but keeps control flow explicit.
+	return &rcppb.ClientResponse{
+		Success: false,
+		Error:   rcppb.ErrorType_UNEXPECTED,
+		Value:   "unexpected reconfiguration state",
+	}, nil
 }
 
 func (node *Node) Store(ctx context.Context, req *rcppb.StoreRequest) (*rcppb.ClientResponse, error) {

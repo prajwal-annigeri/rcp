@@ -2,6 +2,7 @@ package node
 
 import (
 	"fmt"
+	"log"
 	"rcp/rcppb"
 	"slices"
 )
@@ -10,6 +11,7 @@ const (
 	reconfigPhaseStable     = "stable"
 	reconfigPhaseTransition = "transition"
 	reconfigPhaseFinalizing = "finalizing"
+	reconfigBarrierMode     = "__barrier__"
 )
 
 func cloneSet(src map[string]struct{}) map[string]struct{} {
@@ -319,6 +321,11 @@ func (node *Node) isTransitionCustomQuorumPhaseLocked() bool {
 }
 
 // This function assumes mutex is already locked.
+func (node *Node) isActiveVoterLocked(nodeID string) bool {
+	return isMemberOfSet(nodeID, node.activeVoterSet)
+}
+
+// This function assumes mutex is already locked.
 func (node *Node) isElectionVoterLocked(nodeID string) bool {
 	if node.isTransitionJointPhaseLocked() {
 		return isMemberOfSet(nodeID, node.activeVoterSet) || isMemberOfSet(nodeID, node.pendingVoterSet)
@@ -406,9 +413,19 @@ func (node *Node) applyReconfigLogLocked(logEntry *rcppb.LogEntry) error {
 	}
 
 	payload := logEntry.Reconfig
+	skip := func(format string, args ...any) error {
+		log.Printf("Skipping reconfig log: "+format, args...)
+		return nil
+	}
+
+	// Internal barrier entry used to force a leader to linearize state before
+	// accepting a new external reconfiguration request.
+	if payload.Mode == reconfigBarrierMode {
+		return nil
+	}
 
 	if payload.Mode != node.reconfigMode {
-		return fmt.Errorf("reconfig mode mismatch: local=%s log=%s", node.reconfigMode, payload.Mode)
+		return skip("mode mismatch local=%s log=%s epoch=%d phase=%v", node.reconfigMode, payload.Mode, payload.Epoch, payload.Phase)
 	}
 
 	fromVoterSet := setFromIDs(payload.FromVoters)
@@ -416,18 +433,19 @@ func (node *Node) applyReconfigLogLocked(logEntry *rcppb.LogEntry) error {
 
 	for nodeID := range toVoterSet {
 		if _, exists := node.knownNodeSet[nodeID]; !exists {
-			return fmt.Errorf("reconfig target contains unknown node ID: %s", nodeID)
+			return skip("target contains unknown node ID=%s epoch=%d", nodeID, payload.Epoch)
 		}
 	}
 
 	if len(toVoterSet) == 0 {
-		return fmt.Errorf("reconfig target voter set is empty")
+		return skip("target voter set is empty epoch=%d", payload.Epoch)
 	}
 
 	switch payload.Phase {
 	case rcppb.ReconfigPhase_RECONFIG_PHASE_TRANSITION:
+		log.Printf("Reconfig transition start: epoch=%d mode=%s step=%d from=%v to=%v transition=%v", payload.Epoch, payload.Mode, payload.TransitionStep, payload.FromVoters, payload.ToVoters, payload.TransitionVoters)
 		if len(fromVoterSet) > 0 && !sameSet(node.activeVoterSet, fromVoterSet) {
-			return fmt.Errorf("reconfig transition from-voters do not match active voters")
+			return skip("transition from-voters mismatch epoch=%d from=%v local-active=%v", payload.Epoch, payload.FromVoters, sortedIDs(node.activeVoterSet))
 		}
 
 		node.reconfigInFlight = true
@@ -441,7 +459,7 @@ func (node *Node) applyReconfigLogLocked(logEntry *rcppb.LogEntry) error {
 		case ReconfigModeRecraft, ReconfigModeOrca:
 			transitionStep := int(payload.TransitionStep)
 			if transitionStep <= 0 {
-				return fmt.Errorf("invalid %s transition step %d", node.reconfigMode, transitionStep)
+				return skip("invalid %s transition step=%d epoch=%d", node.reconfigMode, transitionStep, payload.Epoch)
 			}
 
 			nextTransitionStep := transitionStep
@@ -450,31 +468,33 @@ func (node *Node) applyReconfigLogLocked(logEntry *rcppb.LogEntry) error {
 					nextTransitionStep = 1
 				} else if transitionStep == 2 {
 					if node.transitionStep != 1 {
-						return fmt.Errorf("invalid orca transition step order: got step %d with previous step %d", transitionStep, node.transitionStep)
+						// Idempotent recovery: a follower can legitimately see step2
+						// first after log repair / overwrite.
+						log.Printf("ORCA step2 observed without local step1 state (prev-step=%d); applying terminal step directly", node.transitionStep)
 					}
 					nextTransitionStep = 2
 				} else {
-					return fmt.Errorf("invalid orca transition step %d", transitionStep)
+					return skip("invalid orca transition step=%d epoch=%d", transitionStep, payload.Epoch)
 				}
 			}
 
 			transitionVoterSet := setFromIDs(payload.TransitionVoters)
 			if len(transitionVoterSet) == 0 {
-				return fmt.Errorf("%s transition voters cannot be empty", node.reconfigMode)
+				return skip("%s transition voters cannot be empty epoch=%d", node.reconfigMode, payload.Epoch)
 			}
 			for nodeID := range transitionVoterSet {
 				if _, exists := node.knownNodeSet[nodeID]; !exists {
-					return fmt.Errorf("%s transition voters contain unknown node ID: %s", node.reconfigMode, nodeID)
+					return skip("%s transition voters contain unknown node ID=%s epoch=%d", node.reconfigMode, nodeID, payload.Epoch)
 				}
 			}
 
 			electionQuorum := int(payload.TransitionElectionQuorum)
 			replicationQuorum := int(payload.TransitionReplicationQuorum)
 			if electionQuorum <= 0 || electionQuorum > len(transitionVoterSet) {
-				return fmt.Errorf("invalid %s election quorum %d for transition voters size %d", node.reconfigMode, electionQuorum, len(transitionVoterSet))
+				return skip("invalid %s election quorum=%d for transition-voters=%d epoch=%d", node.reconfigMode, electionQuorum, len(transitionVoterSet), payload.Epoch)
 			}
 			if replicationQuorum <= 0 || replicationQuorum > len(transitionVoterSet) {
-				return fmt.Errorf("invalid %s replication quorum %d for transition voters size %d", node.reconfigMode, replicationQuorum, len(transitionVoterSet))
+				return skip("invalid %s replication quorum=%d for transition-voters=%d epoch=%d", node.reconfigMode, replicationQuorum, len(transitionVoterSet), payload.Epoch)
 			}
 
 			node.transitionVoterSet = cloneSet(transitionVoterSet)
@@ -495,14 +515,20 @@ func (node *Node) applyReconfigLogLocked(logEntry *rcppb.LogEntry) error {
 
 				node.reconfigInFlight = false
 				node.reconfigCurrentPhase = reconfigPhaseStable
+				log.Printf("Reconfiguration done: epoch=%d mode=%s active=%v", payload.Epoch, payload.Mode, sortedIDs(node.activeVoterSet))
 			}
 		default:
-			return fmt.Errorf("unknown reconfiguration mode: %s", node.reconfigMode)
+			return skip("unknown reconfiguration mode=%s epoch=%d", node.reconfigMode, payload.Epoch)
 		}
 
 		return nil
 
 	case rcppb.ReconfigPhase_RECONFIG_PHASE_FINALIZE:
+		log.Printf("Reconfig finalize start: epoch=%d mode=%s from=%v to=%v", payload.Epoch, payload.Mode, payload.FromVoters, payload.ToVoters)
+		if len(fromVoterSet) > 0 && !sameSet(node.activeVoterSet, fromVoterSet) {
+			return skip("finalize from-voters mismatch epoch=%d from=%v local-active=%v", payload.Epoch, payload.FromVoters, sortedIDs(node.activeVoterSet))
+		}
+
 		node.reconfigInFlight = true
 		node.reconfigEpoch = max(node.reconfigEpoch, payload.Epoch)
 		node.reconfigCurrentPhase = reconfigPhaseFinalizing
@@ -517,9 +543,28 @@ func (node *Node) applyReconfigLogLocked(logEntry *rcppb.LogEntry) error {
 
 		node.reconfigInFlight = false
 		node.reconfigCurrentPhase = reconfigPhaseStable
+		log.Printf("Reconfiguration done: epoch=%d mode=%s active=%v", payload.Epoch, payload.Mode, sortedIDs(node.activeVoterSet))
 		return nil
 
 	default:
-		return fmt.Errorf("unknown reconfig phase: %v", payload.Phase)
+		return skip("unknown reconfig phase=%v epoch=%d", payload.Phase, payload.Epoch)
 	}
+}
+
+// This function assumes mutex is already locked.
+func (node *Node) leaderHintLocked() string {
+	if node.votedFor == "" {
+		return ""
+	}
+
+	// Never advertise self as leader if this node is replying NOT_LEADER.
+	if node.votedFor == node.Id {
+		return ""
+	}
+
+	if !node.isElectionVoterLocked(node.votedFor) {
+		return ""
+	}
+
+	return node.votedFor
 }
